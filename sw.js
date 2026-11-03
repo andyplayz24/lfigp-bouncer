@@ -1,7 +1,7 @@
 // LFIGP Bouncer offline support.
 // Pages: try the network first (so updates show up right away), fall back to the saved copy offline.
 // Libraries, fonts and icons: use the saved copy, refresh it in the background.
-const CACHE = 'bouncer-v2';
+const CACHE = 'bouncer-v3';
 const SHELL = [
   'app.html', 'index.html', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
