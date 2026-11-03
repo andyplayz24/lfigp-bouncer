@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LFIGP Tickets</title>
+<meta name="theme-color" content="#120e2b">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  /* LFIGP ticket page: same night-out palette as the Bouncer app; the result is a ticket with a tear-off stub. */
+  :root {
+    --ink:#120e2b; --ink2:#1c1642; --ink3:#271f57; --line:#382f75;
+    --text:#f7f2ff; --muted:#a99fd6; --faint:#6f66a3;
+    --pink:#ff4f8b; --pink2:#ff7aa8; --sun:#ffc24b; --red:#ff5a6a; --paper:#fff8ef;
+    --display:"Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+    --body:"Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; color:var(--text); font-family:var(--body); font-size:15px;
+         background:radial-gradient(120% 60% at 100% 0%, rgba(138,43,226,.32), transparent 60%),
+                    radial-gradient(90% 50% at 0% 100%, rgba(255,79,139,.16), transparent 60%), var(--ink);
+         display:flex; align-items:center; justify-content:center; padding:24px 16px; }
+  .wrap { width:100%; max-width:400px; display:flex; flex-direction:column; gap:18px; }
+  .view { display:none; flex-direction:column; gap:18px; }
+  .view.on { display:flex; }
+  .tag { font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:3px; color:var(--pink2); }
+  h1 { font-family:var(--display); font-weight:800; font-size:36px; line-height:1.05; letter-spacing:-.8px; margin:6px 0 8px; text-wrap:balance; overflow-wrap:anywhere; }
+  .sub { color:var(--muted); margin:0; line-height:1.5; }
+  .card { background:var(--ink2); border:1px solid var(--line); border-radius:24px; padding:20px; display:flex; flex-direction:column; gap:14px; }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  label { font-size:13px; font-weight:600; color:var(--muted); }
+  input, select { width:100%; padding:15px; font-size:16px; font-family:var(--body); border-radius:14px; border:1px solid var(--line); background:var(--ink); color:var(--text); }
+  input::placeholder { color:var(--faint); }
+  input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline:2px solid var(--pink2); outline-offset:2px; }
+  button { width:100%; padding:16px; font-size:16px; font-weight:700; font-family:var(--body); border:0; border-radius:16px; background:var(--pink); color:#1a0a17; cursor:pointer; box-shadow:0 10px 26px -10px rgba(255,79,139,.8); }
+  button:disabled { opacity:.6; }
+  .err { color:var(--red); font-size:14px; min-height:18px; }
+  .wa { display:block; text-align:center; text-decoration:none; padding:16px; border-radius:16px; font-weight:700; background:#25d366; color:#06240f; }
+  .fine { font-size:12px; color:var(--faint); text-align:center; }
+  .loading { text-align:center; color:var(--muted); }
+
+  /* the ticket */
+  .tix { background:var(--paper); color:#120e2b; border-radius:24px; overflow:hidden; position:relative; }
+  .tix .top { padding:20px 20px 16px; }
+  .tix .ev { font-family:var(--display); font-weight:800; font-size:22px; line-height:1.1; overflow-wrap:anywhere; }
+  .tix .meta { font-size:13px; opacity:.65; margin-top:4px; }
+  .tix .holder { display:flex; justify-content:space-between; gap:12px; margin-top:16px; font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:.6; }
+  .tix .holder-v { display:flex; justify-content:space-between; gap:12px; font-weight:700; font-size:17px; }
+  .tix .holder-v span:first-child { overflow-wrap:anywhere; }
+  .tix .tear { position:relative; border-top:2px dashed rgba(18,14,43,.25); margin:0 18px; }
+  .tix .tear::before, .tix .tear::after { content:""; position:absolute; top:-13px; width:24px; height:24px; border-radius:50%; background:var(--ink); }
+  .tix .tear::before { left:-31px; } .tix .tear::after { right:-31px; }
+  .tix .stub { padding:18px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  #qr img, #qr canvas { display:block; width:220px; height:220px; max-width:100%; }
+  .tid { font-family:var(--mono); font-weight:700; font-size:16px; letter-spacing:3px; }
+  .hint { color:var(--muted); font-size:14px; line-height:1.5; text-align:center; margin:0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="view on" id="vLoading"><p class="loading">Loading…</p></div>
+
+    <div class="view" id="vInvalid">
+      <div><div class="tag">LFIGP</div><h1>That link doesn't work</h1>
+      <p class="sub" id="invalidMsg">Ask the organizers for the right sign-up link.</p></div>
+    </div>
+
+    <div class="view" id="vClosed">
+      <div><div class="tag">LFIGP</div><h1 class="evName"></h1>
+      <p class="sub">Tickets aren't available right now. Check back later.</p></div>
+    </div>
+
+    <div class="view" id="vForm">
+      <div>
+        <div class="tag">LFIGP · ENTRY TICKET</div>
+        <h1 class="evName"></h1>
+        <p class="sub evMeta"></p>
+      </div>
+      <form id="f" class="card" autocomplete="off" novalidate>
+        <div class="field">
+          <label for="name">Full name</label>
+          <input id="name" placeholder="First and last name" required maxlength="80" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required maxlength="120">
+        </div>
+        <div class="field">
+          <label for="grade">Grade</label>
+          <select id="grade" required>
+            <option value="" disabled selected>Select your grade</option>
+            <option>9</option><option>10</option><option>11</option><option>12</option>
+          </select>
+        </div>
+        <button id="btn" type="submit">Get my ticket</button>
+        <div class="err" id="err" role="alert"></div>
+      </form>
+      <div class="fine">Only grades 11 and 12 can get tickets. Your name, email and grade go to the organizers only.</div>
+    </div>
+
+    <div class="view" id="vTicket">
+      <div class="tag" style="text-align:center">YOU'RE ON THE LIST</div>
+      <div class="tix">
+        <div class="top">
+          <div class="ev evName"></div>
+          <div class="meta evMeta"></div>
+          <div class="holder"><span>Guest</span><span>Grade</span></div>
+          <div class="holder-v"><span id="tName"></span><span id="tGrade"></span></div>
+        </div>
+        <div class="tear"></div>
+        <div class="stub">
+          <div id="qr"></div>
+          <div class="tid" id="tId"></div>
+        </div>
+      </div>
+      <p class="hint">Screenshot this ticket and show it at the door. One ticket per person.</p>
+    </div>
+
+    <div class="view" id="vBlocked">
+      <div>
+        <div class="tag" style="color:var(--red)">LFIGP · NO TICKET</div>
+        <h1>Sorry, you can't get a ticket</h1>
+        <p class="sub">This event is only for grades 11 and 12. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.</p>
+      </div>
+      <div class="card">
+        <p class="sub" style="color:var(--text)">If you think this is a mistake, talk to <b>Andrea</b> first. Text her on WhatsApp:</p>
+        <div class="tid" style="text-align:center;font-size:20px;color:var(--text);user-select:all">050 276 2056</div>
+        <a class="wa" href="https://wa.me/971502762056" rel="noopener">Text Andrea on WhatsApp</a>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var API = 'https://script.google.com/macros/s/AKfycbyPPVz5aTOPchqY-gLZQHAKvSbPzOoAP-PtlQ0CxBHIl9lAvvSKUf9ifcSeobZWCeXcYw/exec';
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+  var EVENT_ID = (new URLSearchParams(location.search).get('event') || '').trim();
+  var DEVICE = store.get('lfigp_dev');
+  if (!DEVICE) { DEVICE = 'D' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); store.set('lfigp_dev', DEVICE); }
+  var current = 'vLoading', blocked = false;
+
+  function call(p) {
+    return fetch(API, { method: 'POST', body: JSON.stringify(p), headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        credentials: 'omit', redirect: 'follow' }).then(function (r) { return r.json(); });
+  }
+  function show(id) {
+    current = id;
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) { v.classList.toggle('on', v.id === id); });
+    window.scrollTo(0, 0);
+  }
+  function showBlocked() { blocked = true; store.set('lfigp_blocked', '1'); show('vBlocked'); }
+  function fill(cls, text) { Array.prototype.forEach.call(document.querySelectorAll('.' + cls), function (el) { el.textContent = text; }); }
+
+  // A device that was turned away stays blocked. Andrea can unblock it in the sheet's "Blocked" tab.
+  if (store.get('lfigp_blocked')) showBlocked();
+  call({ action: 'checkDevice', device: DEVICE }).then(function (r) {
+    if (r && r.blocked) showBlocked();
+    else if (blocked) { blocked = false; store.del('lfigp_blocked'); loadEvent(); }
+  }).catch(function () {});
+
+  function loadEvent() {
+    if (blocked) return;
+    if (!EVENT_ID) { show('vInvalid'); return; }
+    call({ action: 'eventInfo', event: EVENT_ID }).then(function (r) {
+      if (blocked) return;
+      if (!r || !r.ok) { show('vInvalid'); return; }
+      var ev = r.event;
+      document.title = ev.name + ' · LFIGP Tickets';
+      fill('evName', ev.name);
+      fill('evMeta', ev.date || 'Sign up to get your QR ticket.');
+      show(ev.open ? 'vForm' : 'vClosed');
+    }).catch(function () {
+      $('invalidMsg').textContent = 'No internet connection. Connect and reload this page.';
+      show('vInvalid');
+    });
+  }
+  loadEvent();
+
+  $('f').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = $('name').value.trim(), email = $('email').value.trim(), grade = $('grade').value;
+    var err = $('err');
+    err.textContent = '';
+    if (!grade) { err.textContent = 'Pick your grade.'; return; }
+    if (grade !== '11' && grade !== '12') {
+      showBlocked();
+      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, device: DEVICE }).catch(function () {});
+      return;
+    }
+    if (name.split(/\s+/).length < 2) { err.textContent = 'Please enter your full name (first and last).'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Please enter a valid email address.'; return; }
+    var btn = $('btn');
+    btn.disabled = true; btn.textContent = 'Getting your ticket…';
+    call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, device: DEVICE }).then(function (res) {
+      if (res && (res.blocked || res.kicked)) { showBlocked(); return; }
+      if (!res || !res.ok) {
+        err.textContent = (res && res.error) || 'Something went wrong. Try again.';
+        btn.disabled = false; btn.textContent = 'Get my ticket';
+        return;
+      }
+      $('tName').textContent = res.name; $('tGrade').textContent = res.grade; $('tId').textContent = res.id;
+      $('qr').innerHTML = '';
+      new QRCode($('qr'), { text: res.code, width: 440, height: 440, colorDark: '#120e2b', colorLight: '#fff8ef', correctLevel: QRCode.CorrectLevel.M });
+      show('vTicket');
+    }).catch(function () {
+      err.textContent = 'Could not connect. Check your internet and try again.';
+      btn.disabled = false; btn.textContent = 'Get my ticket';
+    });
+  });
+})();
+</script>
+</body>
+</html>

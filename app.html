@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LFIGP Bouncer</title>
+<meta name="theme-color" content="#120e2b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bouncer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+  /* LFIGP Bouncer: night-out palette. Deep ink base, hot-pink action color, sun-gold for "heads up", mint for "let in". */
+  :root {
+    --ink:#120e2b; --ink2:#1c1642; --ink3:#271f57; --line:#382f75;
+    --text:#f7f2ff; --muted:#a99fd6; --faint:#6f66a3;
+    --pink:#ff4f8b; --pink2:#ff7aa8; --sun:#ffc24b; --mint:#3ee6a8; --red:#ff5a6a;
+    --display:"Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+    --body:"Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--ink); color:var(--text); font-family:var(--body); font-size:15px; }
+  body { background:
+      radial-gradient(120% 60% at 100% 0%, rgba(138,43,226,.28), transparent 60%),
+      radial-gradient(90% 50% at 0% 100%, rgba(255,79,139,.14), transparent 60%), var(--ink);
+    min-height:100vh; }
+  .wrap { max-width:560px; margin:0 auto; padding:calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 40px); }
+  button { font-family:inherit; cursor:pointer; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--pink2); outline-offset:2px; }
+  .hidden { display:none !important; }
+
+  /* header */
+  header { display:flex; align-items:center; gap:10px; margin-bottom:18px; min-height:44px; }
+  .brand { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+  .brand svg { width:38px; height:38px; flex:none; border-radius:11px; }
+  .brand .word { font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.5px; display:flex; flex-direction:column; line-height:1; }
+  .brand .word .tag { font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:2.5px; color:var(--pink2); margin-bottom:3px; }
+  .brand .crumb { font-family:var(--display); font-weight:600; font-size:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .icon-btn { width:42px; height:42px; flex:none; display:grid; place-items:center; border-radius:13px; border:1px solid var(--line); background:var(--ink2); color:var(--text); }
+  .icon-btn svg { width:20px; height:20px; }
+  .live { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .live i { width:7px; height:7px; border-radius:50%; background:var(--mint); box-shadow:0 0 0 0 rgba(62,230,168,.6); animation:pulse 2s infinite; }
+  .live.off i { background:var(--faint); animation:none; }
+  @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(62,230,168,.55); } 70% { box-shadow:0 0 0 8px rgba(62,230,168,0); } 100% { box-shadow:0 0 0 0 rgba(62,230,168,0); } }
+
+  /* type */
+  h2 { font-family:var(--display); font-weight:800; font-size:28px; letter-spacing:-.6px; margin:0; text-wrap:balance; }
+  .eyebrow { font-size:12px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--muted); }
+  .muted { color:var(--muted); }
+  .row-between { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .stack { display:flex; flex-direction:column; gap:12px; }
+
+  /* buttons */
+  .btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; border:0; border-radius:16px; padding:16px; font-size:16px; font-weight:700; }
+  .btn svg { width:20px; height:20px; }
+  .btn-pink { background:var(--pink); color:#1a0a17; box-shadow:0 10px 26px -10px rgba(255,79,139,.8); }
+  .btn-pink:active { transform:translateY(1px); }
+  .btn-ghost { background:var(--ink2); color:var(--text); border:1px solid var(--line); font-weight:600; }
+  .btn-small { width:auto; padding:10px 16px; font-size:14px; border-radius:999px; }
+  .btn:disabled { opacity:.6; }
+
+  /* fields */
+  .field { display:flex; flex-direction:column; gap:6px; }
+  .field label { font-size:13px; font-weight:600; color:var(--muted); }
+  input, select { width:100%; padding:14px 15px; font-size:16px; font-family:var(--body); border-radius:14px; border:1px solid var(--line); background:var(--ink); color:var(--text); }
+  input::placeholder { color:var(--faint); }
+  .panel { background:var(--ink2); border:1px solid var(--line); border-radius:22px; padding:18px; }
+  .msg { font-size:14px; min-height:18px; color:var(--muted); }
+
+  /* status pills */
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; padding:5px 10px; border-radius:999px; white-space:nowrap; }
+  .pill::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .pill.Open { background:rgba(62,230,168,.14); color:var(--mint); }
+  .pill.Planned { background:rgba(169,159,214,.14); color:var(--muted); }
+  .pill.Closed { background:rgba(255,194,75,.14); color:var(--sun); }
+  .pill.Done { background:rgba(111,102,163,.18); color:var(--faint); }
+
+  /* event ticket cards */
+  .group-label { margin:22px 0 10px; }
+  .ticket { position:relative; display:grid; grid-template-columns:1fr 96px; width:100%; text-align:left; color:var(--text);
+            background:var(--ink2); border:1px solid var(--line); border-radius:20px; padding:0; margin-bottom:12px; overflow:hidden; font:inherit; }
+  .ticket .main { padding:16px 16px 14px; min-width:0; display:flex; flex-direction:column; gap:8px; }
+  .ticket .t-name { font-family:var(--display); font-weight:800; font-size:20px; line-height:1.15; letter-spacing:-.3px; overflow-wrap:anywhere; }
+  .ticket .t-sub { font-size:13px; color:var(--muted); }
+  .ticket .stub { border-left:2px dashed var(--line); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; background:var(--ink3); }
+  .ticket .stub b { font-family:var(--display); font-weight:800; font-size:26px; font-variant-numeric:tabular-nums; }
+  .ticket .stub span { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .ticket::before, .ticket::after { content:""; position:absolute; right:89px; width:16px; height:16px; border-radius:50%; background:var(--ink); border:1px solid var(--line); }
+  .ticket::before { top:-9px; } .ticket::after { bottom:-9px; }
+  .bar { height:6px; border-radius:6px; background:var(--ink); overflow:hidden; }
+  .bar i { display:block; height:100%; border-radius:6px; background:linear-gradient(90deg, var(--pink), var(--sun)); transition:width .5s ease; }
+  .empty { text-align:center; color:var(--muted); padding:36px 12px; line-height:1.6; }
+  .empty b { display:block; font-family:var(--display); font-size:20px; color:var(--text); margin-bottom:4px; }
+
+  /* event page */
+  .hero { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+  .meter { background:var(--ink2); border:1px solid var(--line); border-radius:22px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .meter .big { display:flex; align-items:baseline; gap:8px; }
+  .meter .big b { font-family:var(--display); font-weight:800; font-size:48px; line-height:1; font-variant-numeric:tabular-nums; }
+  .meter .big span { color:var(--muted); font-size:15px; }
+  .meter .bar { height:10px; }
+  .chips3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .mini { background:var(--ink); border-radius:14px; padding:10px 12px; }
+  .mini b { display:block; font-family:var(--display); font-size:20px; font-variant-numeric:tabular-nums; }
+  .mini span { font-size:12px; color:var(--muted); }
+  .mini.ok b { color:var(--mint); } .mini.owe b { color:var(--sun); }
+  .seg { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:4px; background:var(--ink); border:1px solid var(--line); border-radius:14px; }
+  .seg button { border:0; background:transparent; color:var(--muted); padding:10px 4px; border-radius:10px; font-size:13px; font-weight:700; }
+  .seg button.on { background:var(--ink3); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
+  .seg-hint { font-size:12px; color:var(--faint); margin-top:8px; }
+  .filters { display:flex; gap:6px; overflow-x:auto; padding:2px 0 4px; scrollbar-width:none; }
+  .chip { flex:none; padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600; border:1px solid var(--line); background:var(--ink2); color:var(--muted); }
+  .chip.on { background:var(--text); border-color:var(--text); color:var(--ink); }
+  .guests { background:var(--ink2); border:1px solid var(--line); border-radius:22px; padding:4px 14px; }
+  .guest { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .guest:last-child { border-bottom:0; }
+  .av { width:40px; height:40px; flex:none; border-radius:13px; display:grid; place-items:center; font-family:var(--display); font-weight:800; font-size:15px; color:var(--ink); }
+  .guest .g { flex:1; min-width:0; }
+  .guest .gn { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .guest .gs { font-size:12px; color:var(--muted); margin-top:3px; display:flex; gap:8px; flex-wrap:wrap; }
+  .guest .in { color:var(--mint); font-weight:600; }
+  .pay { flex:none; border-radius:999px; padding:8px 12px; font-size:12px; font-weight:800; letter-spacing:.5px; border:1px dashed var(--sun); background:transparent; color:var(--sun); min-width:78px; }
+  .pay.yes { border:1px solid transparent; background:rgba(62,230,168,.16); color:var(--mint); }
+
+  /* scanner */
+  .cam { position:relative; border-radius:24px; overflow:hidden; background:#000; border:1px solid var(--line); min-height:280px; }
+  #reader { width:100%; min-height:280px; }
+  #reader video { object-fit:cover; }
+  #reader img { display:none; }
+  .corners { position:absolute; inset:18%; pointer-events:none; }
+  .corners i { position:absolute; width:34px; height:34px; border:4px solid var(--pink); }
+  .corners i:nth-child(1) { top:0; left:0; border-right:0; border-bottom:0; border-top-left-radius:14px; }
+  .corners i:nth-child(2) { top:0; right:0; border-left:0; border-bottom:0; border-top-right-radius:14px; }
+  .corners i:nth-child(3) { bottom:0; left:0; border-right:0; border-top:0; border-bottom-left-radius:14px; }
+  .corners i:nth-child(4) { bottom:0; right:0; border-left:0; border-top:0; border-bottom-right-radius:14px; }
+  .scanbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .scanbar b { font-family:var(--display); font-size:22px; font-variant-numeric:tabular-nums; }
+  .verdict { border-radius:24px; padding:22px 20px 18px; text-align:center; display:flex; flex-direction:column; gap:6px; animation:pop .25s ease-out; }
+  @keyframes pop { from { transform:scale(.96); opacity:.4; } to { transform:none; opacity:1; } }
+  .verdict .word { font-family:var(--display); font-weight:800; font-size:44px; letter-spacing:-1px; line-height:1; }
+  .verdict .who { font-size:24px; font-weight:700; overflow-wrap:anywhere; margin-top:6px; }
+  .verdict .what { font-size:15px; opacity:.85; }
+  .verdict .meta { font-size:12px; font-family:var(--mono); opacity:.75; margin-top:6px; }
+  .verdict.ok { background:var(--mint); color:#062a1d; }
+  .verdict.warn { background:var(--sun); color:#2b1b00; }
+  .verdict.bad { background:var(--red); color:#2b0007; }
+  .verdict.wait { background:var(--ink3); color:var(--text); }
+  .verdict .acts { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .verdict .btn-dark { background:rgba(0,0,0,.82); color:#fff; }
+  .verdict .btn-line { background:transparent; color:inherit; border:2px solid currentColor; }
+  .manual { display:flex; gap:8px; }
+  .manual input { flex:1; font-family:var(--mono); text-transform:uppercase; }
+  .manual button { flex:none; border:0; border-radius:14px; padding:0 18px; background:var(--ink3); color:var(--text); font-weight:700; }
+  .cam-msg { margin-top:10px; font-size:13px; line-height:1.45; color:var(--sun); background:rgba(255,194,75,.1); border:1px solid rgba(255,194,75,.35); border-radius:14px; padding:10px 12px; }
+  .photo-btn { position:relative; overflow:hidden; }
+  .photo-btn input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+
+  .offline-note { background:rgba(255,194,75,.12); border:1px solid rgba(255,194,75,.4); color:var(--sun); border-radius:14px; padding:10px 12px; font-size:13px; line-height:1.45; margin-bottom:12px; }
+  .live.queued i { background:var(--sun); animation:none; }
+  /* share + unlock */
+  .linkbox { font-family:var(--mono); font-size:12px; line-height:1.5; word-break:break-all; background:var(--ink); border:1px solid var(--line); border-radius:14px; padding:12px; user-select:all; }
+  .unlock { text-align:center; padding:28px 4px 8px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .unlock svg { width:96px; height:96px; border-radius:28px; box-shadow:0 18px 40px -16px rgba(255,79,139,.7); }
+  .unlock h2 { font-size:34px; }
+  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a1a6e"/><stop offset=".55" stop-color="#8a2be2"/><stop offset="1" stop-color="#ff4f8b"/></linearGradient>
+      <symbol id="logo" viewBox="0 0 100 100">
+        <rect width="100" height="100" fill="url(#lg)"/>
+        <g transform="rotate(-6 50 51)">
+          <rect x="22" y="22" width="56" height="58" rx="10" fill="#fff8ef"/>
+          <rect x="29" y="29" width="13" height="13" rx="3" fill="#120e2b"/><rect x="32" y="32" width="7" height="7" rx="1.5" fill="#fff8ef"/>
+          <rect x="58" y="29" width="13" height="13" rx="3" fill="#120e2b"/><rect x="61" y="32" width="7" height="7" rx="1.5" fill="#fff8ef"/>
+          <rect x="29" y="61" width="13" height="13" rx="3" fill="#120e2b"/><rect x="32" y="64" width="7" height="7" rx="1.5" fill="#fff8ef"/>
+          <rect x="25" y="43" width="50" height="3" rx="1.5" fill="#120e2b"/>
+          <path d="M28 45h20v4c0 7-4 9-9 9h-2c-6 0-9-3-9-9z" fill="#120e2b"/>
+          <path d="M52 45h20v4c0 6-3 9-9 9h-2c-5 0-9-2-9-9z" fill="#120e2b"/>
+          <path d="M31 48h5l-4 5h-3z M55 48h5l-4 5h-3z" fill="#ff4f8b"/>
+          <path d="M46 60q4 2.6 8.6.4" fill="none" stroke="#120e2b" stroke-width="1.8" stroke-linecap="round"/>
+          <rect x="53" y="66" width="5" height="5" rx="1" fill="#120e2b"/><rect x="62" y="63" width="5" height="5" rx="1" fill="#120e2b"/><rect x="66" y="70" width="5" height="5" rx="1" fill="#120e2b"/>
+        </g>
+      </symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6"/></symbol>
+      <symbol id="i-scan" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v13M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></symbol>
+      <symbol id="i-cam" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    </defs>
+  </svg>
+
+  <header>
+    <button class="icon-btn hidden" id="backBtn" aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <div class="brand" id="brand">
+      <svg id="brandLogo"><use href="#logo"/></svg>
+      <span class="word" id="brandWord"><small class="tag">LFIGP</small>Bouncer</span>
+      <span class="crumb hidden" id="crumb"></span>
+    </div>
+    <span class="live off" id="live"><i></i><span id="liveTxt">offline</span></span>
+    <button class="icon-btn" id="setBtn" aria-label="Settings"><svg><use href="#i-gear"/></svg></button>
+  </header>
+
+  <!-- UNLOCK / SETTINGS -->
+  <section id="vSettings" class="hidden">
+    <div class="unlock">
+      <svg><use href="#logo"/></svg>
+      <div class="eyebrow" style="color:var(--pink2)">LFIGP</div><h2 style="margin-top:-6px">Bouncer</h2>
+      <p class="muted" style="margin:0">Your door, your list. Enter your own admin key to unlock.</p>
+    </div>
+    <div class="panel stack" style="margin-top:12px">
+      <div class="field"><label for="key">Admin key</label><input id="key" type="password" placeholder="Admin key" autocomplete="off"></div>
+      <button class="btn btn-pink" id="saveBtn">Unlock</button>
+      <div class="msg" id="setMsg"></div>
+    </div>
+  </section>
+
+  <!-- EVENTS -->
+  <section id="vEvents" class="hidden">
+    <div class="row-between">
+      <div><div class="eyebrow" id="hello">Your events</div><h2 id="evHeadline">Who's on the list?</h2></div>
+      <button class="btn btn-pink btn-small" id="newEvBtn"><svg><use href="#i-plus"/></svg>New</button>
+    </div>
+    <div id="evList"></div>
+    <div class="msg" id="evMsg"></div>
+  </section>
+
+  <!-- NEW EVENT -->
+  <section id="vNew" class="hidden">
+    <div class="eyebrow">New event</div>
+    <h2 style="margin-bottom:14px">What's the plan?</h2>
+    <div class="panel stack">
+      <div class="field"><label for="nName">Event name</label><input id="nName" placeholder="Winter Formal" maxlength="80"></div>
+      <div class="field"><label for="nDate">Date</label><input id="nDate" type="date"></div>
+      <div class="field"><label for="nLoc">Location (optional)</label><input id="nLoc" placeholder="School gym"></div>
+      <div class="field"><label for="nPrice">Ticket price (optional)</label><input id="nPrice" placeholder="50 AED"></div>
+      <div class="field"><label for="nStatus">Sign-ups</label>
+        <select id="nStatus"><option value="Open">Open now</option><option value="Planned">Not yet (planned)</option></select></div>
+      <button class="btn btn-pink" id="createBtn">Create event</button>
+      <div class="msg" id="newMsg">Creates a new guest tab for this event in your Google Sheet.</div>
+    </div>
+  </section>
+
+  <!-- EVENT -->
+  <section id="vEvent" class="hidden">
+    <div class="hero">
+      <div class="row-between"><span class="pill" id="ePill"></span><span class="muted" id="eSub" style="font-size:13px;text-align:right"></span></div>
+      <h2 id="eName"></h2>
+    </div>
+    <div class="meter">
+      <div class="big"><b id="eIn">0</b><span id="eOf">of 0 checked in</span></div>
+      <div class="bar"><i id="eBar" style="width:0"></i></div>
+      <div class="chips3">
+        <div class="mini"><b id="eUp">0</b><span>Signed up</span></div>
+        <div class="mini ok"><b id="ePaid">0</b><span>Paid</span></div>
+        <div class="mini owe"><b id="eOwe">0</b><span>Not paid</span></div>
+      </div>
+    </div>
+    <div class="stack" style="margin:14px 0">
+      <button class="btn btn-pink" id="scanBtn"><svg><use href="#i-scan"/></svg>Scan tickets</button>
+      <button class="btn btn-ghost" id="shareBtn"><svg><use href="#i-share"/></svg>Share sign-up link</button>
+    </div>
+    <div class="panel" style="margin-bottom:18px">
+      <div class="eyebrow" style="margin-bottom:10px">Status</div>
+      <div class="seg" id="seg">
+        <button data-s="Planned">Planned</button><button data-s="Open">Open</button><button data-s="Closed">Closed</button><button data-s="Done">Done</button>
+      </div>
+      <div class="seg-hint" id="segHint"></div>
+    </div>
+    <div class="row-between" style="margin-bottom:10px"><div class="eyebrow">Guest list</div><span class="muted" id="gCount" style="font-size:13px"></span></div>
+    <input id="search" placeholder="Search names or ticket IDs" style="margin-bottom:10px">
+    <div class="filters" id="filters" style="margin-bottom:12px">
+      <button class="chip on" data-f="all">Everyone</button>
+      <button class="chip" data-f="in">Came in</button>
+      <button class="chip" data-f="out">Not in yet</button>
+      <button class="chip" data-f="paid">Paid</button>
+      <button class="chip" data-f="unpaid">Not paid</button>
+    </div>
+    <div class="guests" id="gList"></div>
+  </section>
+
+  <!-- SCAN -->
+  <section id="vScan" class="hidden">
+    <div class="offline-note hidden" id="offNote">No internet. Scans are checked against the saved guest list and will sync to the sheet when you are back online.</div>
+    <div class="scanbar"><span class="muted">Checked in</span><b><span id="sIn">0</span><span class="muted" style="font-size:16px"> / <span id="sUp">0</span></span></b></div>
+    <div class="cam" id="camBox">
+      <div id="reader"></div>
+      <div class="corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="cam-msg hidden" id="camMsg" role="status"></div>
+    <div id="verdict" class="verdict hidden" style="margin-top:12px">
+      <div class="word" id="vWord"></div>
+      <div class="who" id="vWho"></div>
+      <div class="what" id="vWhat"></div>
+      <div class="meta" id="vMeta"></div>
+      <div class="acts">
+        <button class="btn btn-dark hidden" id="markPaidBtn">Mark as paid</button>
+        <button class="btn btn-line" id="nextBtn">Scan next</button>
+      </div>
+    </div>
+    <div class="stack" style="margin-top:12px">
+      <button class="btn btn-pink hidden" id="startBtn"><svg><use href="#i-cam"/></svg>Turn on camera</button>
+      <label class="btn btn-ghost photo-btn" for="photo"><svg><use href="#i-cam"/></svg>Snap a photo of the QR instead
+        <input id="photo" type="file" accept="image/*" capture="environment"></label>
+      <div class="manual"><input id="manual" placeholder="T-XXXXXX" autocapitalize="characters" aria-label="Ticket ID"><button id="manualBtn">Check</button></div>
+    </div>
+    <div id="fileReader" style="position:absolute;left:-9999px;width:300px;height:300px"></div>
+  </section>
+
+  <!-- SHARE -->
+  <section id="vShare" class="hidden">
+    <div class="eyebrow">Sign-up link</div>
+    <h2 id="shTitle" style="margin-bottom:14px"></h2>
+    <div class="panel stack">
+      <p class="muted" style="margin:0;line-height:1.5">Send this to people who want in. Grades 11 and 12 get a QR ticket while the event is <b style="color:var(--mint)">Open</b>. Anyone else gets bounced.</p>
+      <div class="linkbox" id="shLink"></div>
+      <button class="btn btn-pink" id="doShare"><svg><use href="#i-share"/></svg>Share link</button>
+      <button class="btn btn-ghost" id="doCopy">Copy link</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  var API = 'https://script.google.com/macros/s/AKfycbyPPVz5aTOPchqY-gLZQHAKvSbPzOoAP-PtlQ0CxBHIl9lAvvSKUf9ifcSeobZWCeXcYw/exec';
+  var BASE = new URL('./', location.href).href;
+  var cfg = { url: BASE, key: store.get('ev_key'), me: store.get('ev_me') };
+  function jget(k, d) { try { return JSON.parse(store.get(k)) || d; } catch (e) { return d; } }
+  function jset(k, v) { store.set(k, JSON.stringify(v)); }
+  var queue = jget('bq_queue', []), flushing = false;
+  var events = jget('bq_events', []), cur = null, guests = [], filter = 'all', view = '', history = [];
+  var scanner = null, busy = false, lastScan = null, pending = 0, lastOk = 0;
+  var LIVE_MS = 6000;
+  var AV = ['#ff7aa8', '#ffc24b', '#3ee6a8', '#8fb3ff', '#c9a2ff', '#ff9e6b'];
+
+  function api(action, params) {
+    var p = { action: action, key: cfg.key };
+    for (var k in (params || {})) p[k] = String(params[k]);
+    if (navigator.onLine === false) { setLive(false); return Promise.reject(new Error('offline')); }
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 20000);
+    return fetch(API, { method: 'POST', body: JSON.stringify(p), headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        credentials: 'omit', redirect: 'follow', signal: ctrl ? ctrl.signal : undefined })
+      .then(function (res) { return res.json(); })
+      .then(function (r) { clearTimeout(timer); lastOk = Date.now(); setLive(true); return r; })
+      .catch(function (e) { clearTimeout(timer); setLive(false); throw e; });
+  }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function signupLink(ev) { return BASE + '?event=' + encodeURIComponent(ev.id); }
+  function initials(n) { var p = String(n).trim().split(/\s+/); return ((p[0] || '')[0] || '') + ((p.length > 1 ? p[p.length - 1][0] : '') || ''); }
+  function avColor(id) { var h = 0; for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 997; return AV[h % AV.length]; }
+  function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
+  var online = true;
+  function setLive(on) { online = on; paintLive(); }
+  function paintLive() {
+    var n = queue.length;
+    $('live').classList.toggle('off', !online && !n);
+    $('live').classList.toggle('queued', n > 0);
+    $('liveTxt').textContent = n ? (online ? 'syncing ' + n : 'offline · ' + n + ' to sync') : (online ? 'live' : 'offline');
+    $('offNote').classList.toggle('hidden', online);
+  }
+  function enqueue(action, params) {
+    params.at = Date.now();
+    queue.push({ action: action, params: params }); jset('bq_queue', queue); paintLive();
+  }
+  function flush() {
+    if (flushing || !queue.length || !cfg.key || navigator.onLine === false) return;
+    flushing = true;
+    var item = queue[0];
+    api(item.action, item.params).then(function (r) {
+      queue.shift(); jset('bq_queue', queue); flushing = false; paintLive();
+      if (queue.length) flush(); else refresh();
+    }).catch(function () { flushing = false; paintLive(); });
+  }
+  window.addEventListener('online', function () { flush(); refresh(); });
+  window.addEventListener('offline', function () { setLive(false); });
+
+  /* ---------- navigation ---------- */
+  function go(v, push) {
+    if (push !== false && view && view !== v) history.push(view);
+    view = v;
+    ['vSettings', 'vEvents', 'vNew', 'vEvent', 'vScan', 'vShare'].forEach(function (s) { $(s).classList.toggle('hidden', s !== v); });
+    var top = v === 'vEvents' || v === 'vSettings';
+    $('backBtn').classList.toggle('hidden', top);
+    $('brandLogo').classList.toggle('hidden', !top);
+    $('brandWord').classList.toggle('hidden', !top);
+    $('crumb').classList.toggle('hidden', top);
+    $('crumb').textContent = v === 'vNew' ? 'New event' : (cur ? cur.name : '');
+    $('live').classList.toggle('hidden', v === 'vSettings');
+    if (v === 'vScan') startScanner(); else stopScanner();
+    window.scrollTo(0, 0);
+    refresh();
+  }
+  $('backBtn').onclick = function () { var p = history.pop() || 'vEvents'; go(p, false); };
+  $('setBtn').onclick = function () { $('key').value = cfg.key; go('vSettings'); };
+
+  /* ---------- unlock ---------- */
+  $('saveBtn').onclick = function () {
+    var key = $('key').value.trim();
+    $('setMsg').textContent = 'Checking…';
+    cfg = { url: BASE, key: key };
+    api('ping').then(function (r) {
+      if (!r.ok) { $('setMsg').textContent = 'That key is not right. Check it and try again.'; return; }
+      store.set('ev_key', key); store.set('ev_me', r.name || ''); cfg.me = r.name || '';
+      $('setMsg').textContent = 'Unlocked as ' + cfg.me; sayHello();
+      history = []; go('vEvents', false);
+    }).catch(function () { $('setMsg').textContent = 'No connection. Check your internet and try again.'; });
+  };
+  $('key').onkeydown = function (e) { if (e.key === 'Enter') $('saveBtn').onclick(); };
+
+  /* ---------- live refresh ---------- */
+  function refresh() {
+    if (!cfg.key || pending) return;
+    if (queue.length) { flush(); return; }
+    if (view === 'vEvents') loadEvents();
+    else if (view === 'vEvent' || view === 'vScan') loadGuests();
+  }
+  setInterval(function () { if (!document.hidden) refresh(); }, LIVE_MS);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+  setInterval(function () { if (lastOk && Date.now() - lastOk > LIVE_MS * 3) setLive(false); }, 4000);
+
+  /* ---------- events ---------- */
+  function loadEvents() {
+    if (!events.length) $('evMsg').textContent = 'Loading your events…';
+    pending++;
+    api('events').then(function (r) {
+      pending--;
+      if (!r.ok) { $('evMsg').textContent = r.error; return; }
+      events = r.events; jset('bq_events', events); $('evMsg').textContent = ''; renderEvents();
+    }).catch(function () { pending--; $('evMsg').textContent = events.length ? 'Offline. Showing your saved events.' : 'No internet yet. Connect once to load your events.'; renderEvents(); });
+  }
+  function ticketCard(e) {
+    var s = e.stats || { signedUp: 0, checkedIn: 0, paid: 0 };
+    var sub = [e.date, e.location, e.price ? e.price : ''].filter(Boolean).join(' · ') || 'No date yet';
+    return '<button class="ticket" data-id="' + esc(e.id) + '"><div class="main">' +
+      '<span class="pill ' + esc(e.status) + '">' + esc(e.status) + '</span>' +
+      '<div class="t-name">' + esc(e.name) + '</div><div class="t-sub">' + esc(sub) + '</div>' +
+      (e.missing ? '<div class="t-sub" style="color:var(--red)">Guest tab was deleted from the sheet</div>' :
+        '<div class="bar"><i style="width:' + pct(s.checkedIn, s.signedUp) + '%"></i></div>') +
+      '</div><div class="stub"><b>' + s.checkedIn + '</b><span>of ' + s.signedUp + ' in</span></div></button>';
+  }
+  function renderEvents() {
+    var groups = { now: [], planned: [], past: [] };
+    events.forEach(function (e) {
+      if (e.status === 'Done') groups.past.push(e); else if (e.status === 'Planned') groups.planned.push(e); else groups.now.push(e);
+    });
+    var html = '';
+    [['now', 'Happening'], ['planned', 'Coming up'], ['past', 'Past events']].forEach(function (g) {
+      if (!groups[g[0]].length) return;
+      html += '<div class="eyebrow group-label">' + g[1] + '</div>' + groups[g[0]].map(ticketCard).join('');
+    });
+    $('evList').innerHTML = html || '<div class="empty"><b>No events yet</b>Tap New to add your first event. It gets its own tab in your sheet.</div>';
+    Array.prototype.forEach.call($('evList').querySelectorAll('.ticket'), function (b) {
+      b.onclick = function () { openEvent(b.getAttribute('data-id')); };
+    });
+  }
+  function openEvent(id) {
+    cur = events.find(function (e) { return e.id === id; }) || cur;
+    if (!cur) return;
+    guests = jget('bq_g_' + cur.id, []); filter = 'all'; $('search').value = '';
+    Array.prototype.forEach.call($('filters').querySelectorAll('.chip'), function (x) { x.classList.toggle('on', x.getAttribute('data-f') === 'all'); });
+    renderEventHeader(); renderGuests(true);
+    go('vEvent');
+  }
+
+  $('newEvBtn').onclick = function () { ['nName', 'nDate', 'nLoc', 'nPrice'].forEach(function (i) { $(i).value = ''; }); go('vNew'); setTimeout(function () { $('nName').focus(); }, 50); };
+  $('createBtn').onclick = function () {
+    var name = $('nName').value.trim();
+    if (!name) { $('newMsg').textContent = 'Give the event a name first.'; return; }
+    $('createBtn').disabled = true; $('newMsg').textContent = 'Creating…';
+    api('createEvent', { name: name, date: $('nDate').value, location: $('nLoc').value.trim(), price: $('nPrice').value.trim(), status: $('nStatus').value })
+      .then(function (r) {
+        $('createBtn').disabled = false;
+        if (!r.ok) { $('newMsg').textContent = r.error; return; }
+        r.event.stats = { signedUp: 0, checkedIn: 0, paid: 0 };
+        events.unshift(r.event); cur = r.event; history = ['vEvents'];
+        guests = []; renderEventHeader(); renderGuests(true); go('vEvent', false);
+        $('newMsg').textContent = 'Creates a new guest tab for this event in your Google Sheet.';
+      }).catch(function () { $('createBtn').disabled = false; $('newMsg').textContent = 'No connection. Try again.'; });
+  };
+
+  /* ---------- event page ---------- */
+  var HINTS = { Planned: 'Sign-ups are off. The link shows "not open yet".', Open: 'Sign-ups are on. Grades 11 and 12 can get tickets.', Closed: 'No new sign-ups. Existing tickets still scan.', Done: 'Event is over. It moves to Past events.' };
+  function setStats(s) {
+    if (!s) return;
+    if (cur) cur.stats = s;
+    $('eIn').textContent = s.checkedIn; $('eOf').textContent = 'of ' + s.signedUp + ' checked in';
+    $('eBar').style.width = pct(s.checkedIn, s.signedUp) + '%';
+    $('eUp').textContent = s.signedUp; $('ePaid').textContent = s.paid; $('eOwe').textContent = Math.max(0, s.signedUp - s.paid);
+    $('sIn').textContent = s.checkedIn; $('sUp').textContent = s.signedUp;
+  }
+  function renderEventHeader() {
+    $('eName').textContent = cur.name;
+    $('crumb').textContent = cur.name;
+    $('ePill').className = 'pill ' + cur.status; $('ePill').textContent = cur.status;
+    $('eSub').textContent = [cur.date, cur.location, cur.price].filter(Boolean).join(' · ');
+    Array.prototype.forEach.call($('seg').children, function (b) { b.classList.toggle('on', b.getAttribute('data-s') === cur.status); });
+    $('segHint').textContent = HINTS[cur.status] || '';
+    setStats(cur.stats || { signedUp: 0, checkedIn: 0, paid: 0 });
+  }
+  function loadGuests() {
+    if (!cur) return;
+    var id = cur.id;
+    pending++;
+    api('guests', { event: id }).then(function (r) {
+      pending--;
+      if (!cur || cur.id !== id) return;
+      if (!r.ok) { $('gList').innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+      Object.assign(cur, r.event); guests = r.guests; jset('bq_g_' + id, guests); setStats(r.stats);
+      if (view === 'vEvent') { renderEventHeader(); renderGuests(); }
+    }).catch(function () { pending--; });
+  }
+  function renderGuests(loading) {
+    var q = $('search').value.trim().toLowerCase();
+    var list = guests.filter(function (g) {
+      if (q && g.name.toLowerCase().indexOf(q) < 0 && g.id.toLowerCase().indexOf(q) < 0) return false;
+      if (filter === 'in') return g.checkedIn;
+      if (filter === 'out') return !g.checkedIn;
+      if (filter === 'paid') return g.paid;
+      if (filter === 'unpaid') return !g.paid;
+      return true;
+    }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    $('gCount').textContent = guests.length ? (list.length + ' shown') : '';
+    if (!guests.length) { $('gList').innerHTML = '<div class="empty">' + (loading ? 'Loading guests…' : '<b>No one yet</b>Share the sign-up link to start filling the list.') + '</div>'; return; }
+    $('gList').innerHTML = list.map(function (g) {
+      return '<div class="guest"><div class="av" style="background:' + avColor(g.id) + '">' + esc(initials(g.name).toUpperCase()) + '</div>' +
+        '<div class="g"><div class="gn">' + esc(g.name) + '</div><div class="gs"><span>Grade ' + esc(g.grade) + '</span>' +
+        (g.checkedIn ? '<span class="in">✓ In ' + esc(String(g.time).replace(/^.*, /, '')) + (g.by ? ' · ' + esc(g.by) : '') + '</span>' : '<span>Not in yet</span>') +
+        '</div></div><button class="pay' + (g.paid ? ' yes' : '') + '" data-t="' + esc(g.id) + '">' + (g.paid ? 'PAID' : 'NOT PAID') + '</button></div>';
+    }).join('') || '<div class="empty">No one matches that.</div>';
+    Array.prototype.forEach.call($('gList').querySelectorAll('.pay'), function (b) {
+      b.onclick = function () { togglePaid(b.getAttribute('data-t'), b); };
+    });
+  }
+  function togglePaid(ticket, btn) {
+    var g = guests.find(function (x) { return x.id === ticket; });
+    if (!g) return;
+    var next = !g.paid;
+    g.paid = next; if (btn) { btn.classList.toggle('yes', next); btn.textContent = next ? 'PAID' : 'NOT PAID'; }
+    pending++;
+    api('setPaid', { event: cur.id, ticket: ticket, paid: next ? '1' : '0' }).then(function (r) {
+      pending--;
+      if (r.ok) setStats(r.stats); else g.paid = !next;
+      renderGuests();
+    }).catch(function () {
+      pending--; enqueue('setPaid', { event: cur.id, ticket: ticket, paid: next ? '1' : '0' });
+      jset('bq_g_' + cur.id, guests); localStats(); renderGuests();
+    });
+  }
+  $('search').oninput = function () { renderGuests(); };
+  Array.prototype.forEach.call($('filters').querySelectorAll('.chip'), function (c) {
+    c.onclick = function () {
+      filter = c.getAttribute('data-f');
+      Array.prototype.forEach.call($('filters').querySelectorAll('.chip'), function (x) { x.classList.toggle('on', x === c); });
+      renderGuests();
+    };
+  });
+  Array.prototype.forEach.call($('seg').children, function (b) {
+    b.onclick = function () {
+      var s = b.getAttribute('data-s'), prev = cur.status;
+      cur.status = s; renderEventHeader();
+      api('updateEvent', { event: cur.id, status: s }).then(function (r) { if (!r.ok) { cur.status = prev; renderEventHeader(); } })
+        .catch(function () { cur.status = prev; renderEventHeader(); });
+    };
+  });
+  $('scanBtn').onclick = function () { hideVerdict(); go('vScan'); };
+  $('shareBtn').onclick = function () { $('shTitle').textContent = cur.name; $('shLink').textContent = signupLink(cur); $('doCopy').textContent = 'Copy link'; go('vShare'); };
+  $('doShare').onclick = function () {
+    var url = signupLink(cur);
+    if (navigator.share) navigator.share({ title: cur.name, text: 'Get your ticket for ' + cur.name + ':', url: url }).catch(function () { $('doCopy').onclick(); });
+    else $('doCopy').onclick();
+  };
+  $('doCopy').onclick = function () {
+    var url = signupLink(cur);
+    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+      .then(function () { $('doCopy').textContent = 'Copied'; })
+      .catch(function () { var r = document.createRange(); r.selectNodeContents($('shLink')); var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); $('doCopy').textContent = 'Link selected, tap Copy'; });
+  };
+
+  /* ---------- scanner ---------- */
+  function camMsg(t) { $('camMsg').textContent = t; $('camMsg').classList.toggle('hidden', !t); }
+  function startScanner() {
+    if (scanner && scanner.isScanning) { try { scanner.resume(); } catch (e) {} return; }
+    if (typeof Html5Qrcode === 'undefined') { $('startBtn').classList.remove('hidden'); camMsg('The scanner did not load. Check your internet, then tap Turn on camera.'); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('startBtn').classList.remove('hidden'); camMsg('Live camera is not available on this page. Use "Snap a photo of the QR" below.'); return; }
+    if (!scanner) {
+      var opts = { verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } };
+      if (window.Html5QrcodeSupportedFormats) opts.formatsToSupport = [Html5QrcodeSupportedFormats.QR_CODE];
+      scanner = new Html5Qrcode('reader', opts);
+    }
+    camMsg('');
+    scanner.start({ facingMode: 'environment' },
+      { fps: 15, aspectRatio: 1, disableFlip: true, qrbox: function (w, h) { var s = Math.floor(Math.min(w, h) * 0.72); return { width: s, height: s }; } },
+      onCode, function () {})
+      .then(function () { $('startBtn').classList.add('hidden'); camMsg(''); })
+      .catch(function (err) {
+        $('startBtn').classList.remove('hidden');
+        var m = String((err && (err.name || err.message)) || err || '');
+        camMsg(/NotAllowed|Permission|denied/i.test(m)
+          ? 'Camera access is blocked. Allow the camera for this site in your browser settings, then tap Turn on camera.'
+          : /NotFound|Overconstrained/i.test(m) ? 'No back camera was found on this device.'
+          : 'The live camera could not start here. Use "Snap a photo of the QR" below.');
+      });
+  }
+  function stopScanner() { if (scanner && scanner.isScanning) scanner.stop().catch(function () {}); }
+  $('startBtn').onclick = startScanner;
+
+  function onCode(text) {
+    if (busy) return;
+    busy = true;
+    if (scanner && scanner.isScanning) { try { scanner.pause(true); } catch (e) {} }
+    lookup(text.trim());
+  }
+  function localStats() {
+    setStats({ signedUp: guests.length, checkedIn: guests.filter(function (g) { return g.checkedIn; }).length, paid: guests.filter(function (g) { return g.paid; }).length });
+  }
+  function offlineScan(code) {
+    var c = String(code).trim().toUpperCase(), evId = '', t = c;
+    if (c.indexOf('|') > 0) { evId = c.split('|')[0]; t = c.split('|')[1]; }
+    enqueue('scan', { event: cur.id, code: c });
+    if (evId && evId !== cur.id.toUpperCase()) { buzz([200, 100, 200]); return verdict('bad', 'Wrong night', 'Ticket is for another event', 'Saved offline', '', null); }
+    var g = guests.find(function (x) { return x.id.toUpperCase() === t; });
+    if (!g) { buzz([200, 100, 200]); return verdict('bad', 'Not on the list', 'Not in the saved guest list', 'Offline: if they signed up very recently, check again once online.', '', null); }
+    var who = g.name, what = 'Grade ' + g.grade + ' · ' + (g.paid ? 'Paid' : 'Not paid');
+    if ([11, 12].indexOf(Number(g.grade)) < 0) { buzz([200, 100, 200]); return verdict('bad', 'Bounced', who, 'Only grades 11 & 12 allowed', g.id, null); }
+    if (g.checkedIn) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Already used', who, 'This ticket was already scanned. Do not let in.', 'Used ' + g.time + (g.by ? ' · scanned by ' + g.by : ''), null); }
+    g.checkedIn = true; g.time = 'offline'; g.by = cfg.me; jset('bq_g_' + cur.id, guests); localStats();
+    lastScan = { id: g.id, name: g.name, grade: g.grade, paid: g.paid, offline: true };
+    buzz(150);
+    if (g.paid) verdict('ok', 'Let them in', who, what, 'Saved offline · syncs when back online', true);
+    else verdict('warn', 'Collect payment', who, what, 'Saved offline · syncs when back online', false);
+  }
+  function lookup(code) {
+    busy = true; lastScan = null;
+    verdict('wait', 'Checking…', '', '', '', null);
+    api('scan', { event: cur.id, code: code }).then(function (r) {
+      setStats(r.stats);
+      if (!r.ok) return verdict('bad', 'Hmm.', 'Something went wrong', r.error || '', '', null);
+      if (r.wrongEvent) { buzz([200, 100, 200]); return verdict('bad', 'Wrong night', 'Ticket is for another event', r.wrongEvent, '', null); }
+      if (!r.found) { buzz([200, 100, 200]); return verdict('bad', 'Not on the list', 'This ticket is not in this event', '', '', null); }
+      lastScan = r;
+      var g = guests.find(function (x) { return x.id === r.id; });
+      if (g) { g.checkedIn = true; g.time = r.time; g.by = r.by; }
+      var who = r.name, what = 'Grade ' + r.grade + ' · ' + (r.paid ? 'Paid' : 'Not paid');
+      if (!r.eligible) { buzz([200, 100, 200]); return verdict('bad', 'Bounced', who, 'Grade ' + r.grade + ' · only 11 & 12 allowed', r.id, null); }
+      if (r.alreadyCheckedIn) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Already used', who, 'This ticket was already scanned. Do not let in.', 'Used ' + r.time + (r.by ? ' · scanned by ' + r.by : ''), null); }
+      buzz(150);
+      if (r.paid) verdict('ok', 'Let them in', who, what, 'Let in by ' + (r.by || cfg.me) + ' · ' + r.time, true);
+      else verdict('warn', 'Collect payment', who, what, 'Let in by ' + (r.by || cfg.me) + ' · ' + r.time, false);
+    }).catch(function () { setLive(false); offlineScan(code); });
+  }
+  function verdict(kind, word, who, what, meta, paid) {
+    var el = $('verdict');
+    el.className = 'verdict ' + kind;
+    $('vWord').textContent = word; $('vWho').textContent = who; $('vWhat').textContent = what; $('vMeta').textContent = meta;
+    $('markPaidBtn').classList.toggle('hidden', !(paid === false && lastScan));
+    $('nextBtn').classList.toggle('hidden', kind === 'wait');
+    $('camBox').classList.toggle('hidden', kind !== 'wait' && false);
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  function hideVerdict() { $('verdict').className = 'verdict hidden'; busy = false; }
+  $('markPaidBtn').onclick = function () {
+    if (!lastScan) return;
+    var id = lastScan.id;
+    $('markPaidBtn').textContent = 'Saving…';
+    api('setPaid', { event: cur.id, ticket: id, paid: '1' }).then(function (r) {
+      $('markPaidBtn').textContent = 'Mark as paid';
+      if (!r.ok) return;
+      setStats(r.stats);
+      var g = guests.find(function (x) { return x.id === id; }); if (g) g.paid = true;
+      lastScan.paid = true;
+      verdict('ok', 'Let them in', lastScan.name, 'Grade ' + lastScan.grade + ' · Paid', id, true);
+    }).catch(function () {
+      $('markPaidBtn').textContent = 'Mark as paid';
+      enqueue('setPaid', { event: cur.id, ticket: id, paid: '1' });
+      var g = guests.find(function (x) { return x.id === id; }); if (g) { g.paid = true; jset('bq_g_' + cur.id, guests); localStats(); }
+      lastScan.paid = true;
+      verdict('ok', 'Let them in', lastScan.name, 'Grade ' + lastScan.grade + ' · Paid', 'Saved offline · syncs when back online', true);
+    });
+  };
+  // Read a QR from a photo: shrink it, then try jsQR, the phone's built-in detector, and html5-qrcode.
+  function decodePhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('bad image')); };
+      img.onload = function () {
+        var sizes = [1000, 1600, 700, 2200], i = 0;
+        function attempt() {
+          if (i >= sizes.length) { URL.revokeObjectURL(url); return viaDetector(); }
+          var max = sizes[i++], sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+          var c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
+          var x = c.getContext('2d', { willReadFrequently: true });
+          x.drawImage(img, 0, 0, c.width, c.height);
+          var r = null;
+          try { r = window.jsQR ? jsQR(x.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: 'attemptBoth' }) : null; } catch (e) {}
+          if (r && r.data) { URL.revokeObjectURL(url); resolve(r.data); } else attempt();
+        }
+        function viaDetector() {
+          if ('BarcodeDetector' in window) {
+            try {
+              new BarcodeDetector({ formats: ['qr_code'] }).detect(img).then(function (codes) {
+                if (codes && codes.length) resolve(codes[0].rawValue); else viaLib();
+              }).catch(viaLib);
+              return;
+            } catch (e) {}
+          }
+          viaLib();
+        }
+        function viaLib() {
+          if (typeof Html5Qrcode === 'undefined') return reject(new Error('no reader'));
+          var fr = new Html5Qrcode('fileReader', { verbose: false });
+          fr.scanFile(file, false).then(function (t) { try { fr.clear(); } catch (e) {} resolve(t); }).catch(reject);
+        }
+        attempt();
+      };
+      img.src = url;
+    });
+  }
+  $('photo').onchange = function () {
+    var f = $('photo').files[0];
+    $('photo').value = '';
+    if (!f) return;
+    if (scanner && scanner.isScanning) { try { scanner.pause(true); } catch (e) {} }
+    busy = true; lastScan = null;
+    verdict('wait', 'Reading photo…', '', '', '', null);
+    decodePhoto(f).then(function (text) { busy = false; onCode(text); })
+      .catch(function () { verdict('bad', 'No QR found', 'Try again a little closer', 'Fill most of the photo with the QR code and keep it sharp and well lit.', '', null); });
+  };
+  function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+  $('nextBtn').onclick = function () {
+    hideVerdict();
+    if (scanner) { try { scanner.resume(); } catch (e) { startScanner(); } }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  $('manualBtn').onclick = function () {
+    var v = $('manual').value.trim().toUpperCase();
+    if (!v) return;
+    $('manual').value = '';
+    if (scanner && scanner.isScanning) { try { scanner.pause(true); } catch (e) {} }
+    lookup(v);
+  };
+  $('manual').onkeydown = function (e) { if (e.key === 'Enter') $('manualBtn').onclick(); };
+
+  /* ---------- boot ---------- */
+  function sayHello() {
+    var hour = new Date().getHours();
+    $('hello').textContent = cfg.me ? 'Hey ' + cfg.me : 'Your events';
+    $('evHeadline').textContent = hour < 12 ? 'Morning, boss.' : hour < 18 ? 'Who\'s on the list?' : 'Doors open soon?';
+  }
+  sayHello(); renderEvents(); paintLive();
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function () {}); }
+  if (!cfg.key) go('vSettings', false); else { go('vEvents', false); if (!cfg.me) api('ping').then(function (r) { if (r.ok) { cfg.me = r.name; store.set('ev_me', r.name); sayHello(); } }).catch(function () {}); }
+})();
+</script>
+</body>
+</html>
