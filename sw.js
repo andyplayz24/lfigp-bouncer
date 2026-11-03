@@ -2,7 +2,7 @@
 // Our own files (pages, scanner, icons): always try the internet first, so reopening the app gets the newest version.
 //   If there is no internet, the last saved copy is used, so the app still opens offline.
 // Libraries from other sites: use the saved copy (they never change), refresh it in the background.
-const CACHE = 'bouncer-v6';
+const CACHE = 'bouncer-v7';
 const SHELL = [
   'app.html', 'index.html', 'camtest.html', 'scanner.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
