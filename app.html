@@ -134,8 +134,10 @@
   /* scanner */
   .cam { position:relative; border-radius:24px; overflow:hidden; background:#000; border:1px solid var(--line); aspect-ratio:1 / 1; max-height:62vh; width:100%; margin:0 auto; }
   .cam video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
-  .cam-idle { position:absolute; inset:0; display:grid; place-items:center; color:var(--faint); font-size:14px; }
+  .cam-idle { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; width:100%; border:0; background:transparent; color:var(--text); font-size:16px; font-weight:700; cursor:pointer; }
+  .cam-idle .cam-ico { width:64px; height:64px; border-radius:50%; display:grid; place-items:center; background:var(--pink); color:#1a0a17; font-size:30px; box-shadow:0 10px 30px -8px rgba(255,79,139,.9); }
   .cam.live .cam-idle { display:none; }
+  .cam-switch { position:absolute; right:10px; bottom:10px; z-index:3; border:0; border-radius:999px; padding:8px 12px; font-size:12px; font-weight:700; background:rgba(18,14,43,.72); color:var(--text); backdrop-filter:blur(6px); }
   .corners { position:absolute; inset:14%; pointer-events:none; }
   .laser { position:absolute; left:6%; right:6%; top:50%; height:2px; background:var(--pink); box-shadow:0 0 12px 2px rgba(255,79,139,.8); opacity:0; }
   .cam.live .laser { opacity:1; animation:sweep 1.8s ease-in-out infinite alternate; }
@@ -302,7 +304,8 @@
     <div class="cam" id="camBox">
       <video id="camVideo" playsinline muted autoplay></video>
       <div class="corners" aria-hidden="true"><i></i><i></i><i></i><i></i><b class="laser"></b></div>
-      <div class="cam-idle" id="camIdle">Camera off</div>
+      <button class="cam-switch hidden" id="camSwitch" type="button" aria-label="Switch camera lens">&#8635; Lens</button>
+      <button class="cam-idle" id="camIdle" type="button"><span class="cam-ico">&#9673;</span><span>Tap to turn on camera</span></button>
     </div>
     <div class="cam-msg hidden" id="camMsg" role="status"></div>
     <div id="verdict" class="verdict hidden" style="margin-top:12px">
@@ -316,7 +319,7 @@
       </div>
     </div>
     <div class="stack" style="margin-top:12px">
-      <button class="btn btn-pink hidden" id="startBtn"><svg><use href="#i-cam"/></svg>Turn on camera</button>
+      <button class="btn btn-pink hidden" id="startBtn" style="display:none"><svg><use href="#i-cam"/></svg>Turn on camera</button>
       <label class="btn btn-ghost photo-btn" for="photo"><svg><use href="#i-cam"/></svg>Snap a photo of the QR instead
         <input id="photo" type="file" accept="image/*" capture="environment"></label>
       <div class="manual"><input id="manual" placeholder="T-XXXXXX" autocapitalize="characters" aria-label="Ticket ID"><button id="manualBtn">Check</button></div>
@@ -604,37 +607,120 @@
 
   /* Direct camera scanner: back camera -> video -> read a QR ~10 times a second.
      Uses the phone's built-in QR detector when it has one (most Android), otherwise jsQR (iPhone). */
-  var cam = { stream: null, running: false, paused: false, raf: 0, detector: null, busyFrame: false, last: 0, canvas: document.createElement('canvas') };
+  var UA = navigator.userAgent || '';
+  var IN_APP = /FBAN|FBAV|FB_IAB|Instagram|Snapchat|Line\/|MicroMessenger|TikTok|musical_ly|; wv\)/i.test(UA);
+
+  /* ---- Camera: always the main 1x back lens ----
+     iPhone names it "Back Camera" (the 0.5x is "Ultra Wide", 2x/3x is "Telephoto"; "Dual"/"Triple" switch lenses by themselves).
+     Android's main lens is usually "camera2 0, facing back". The pick is remembered on this phone. */
+  var BACK = /back|rear|environment|facing back|arri[eè]re|trasera|hinten|posteriore|خلف/i;
+  var NOT_MAIN = /ultra|wide|tele|dual|triple|macro|depth|zoom|infrared|\bir\b|0[.,]5|\b2x\b|\b3x\b|\b5x\b|فائق|مقرب|مزدوج|ثلاثي/i;
+  function backCams(devs) { return devs.filter(function (d) { return d.kind === 'videoinput' && BACK.test(d.label || ''); }); }
+  function pickMain(devs) {
+    var back = backCams(devs);
+    if (!back.length) return null;
+    var exact = back.filter(function (d) { return /^back camera$/i.test((d.label || '').trim()); })[0];
+    if (exact) return exact;
+    var cam0 = back.filter(function (d) { return /camera2 0\b|camera 0\b/i.test(d.label || ''); })[0];
+    if (cam0) return cam0;
+    var plain = back.filter(function (d) { return !NOT_MAIN.test(d.label || ''); })
+                    .sort(function (x, y) { return (x.label || '').length - (y.label || '').length; });
+    return plain[0] || back[0];
+  }
+  function camConstraints(id) {
+    var v = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+    if (id) v.deviceId = { exact: id }; else v.facingMode = { ideal: 'environment' };
+    return { audio: false, video: v };
+  }
+  function trackId(stream) { var t = stream.getVideoTracks()[0]; var st = t && t.getSettings ? t.getSettings() : {}; return st.deviceId || ''; }
+
+  var cam = { stream: null, running: false, paused: false, raf: 0, detector: null, busyFrame: false, last: 0, flip: false,
+              canvas: document.createElement('canvas'), worker: null, ignore: '', ignoreUntil: 0, slow: 0, backs: [] };
+
+  // jsQR runs in a background worker so the video never stutters
+  (function makeWorker() {
+    try {
+      var src = "importScripts('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');" +
+        "onmessage=function(e){var d=e.data,r=null;try{r=jsQR(new Uint8ClampedArray(d.buf),d.w,d.h,{inversionAttempts:'dontInvert'});}catch(x){}postMessage(r&&r.data?r.data:null);};";
+      cam.worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      cam.worker.onmessage = function (e) { cam.busyFrame = false; if (e.data) gotCode(e.data); };
+      cam.worker.onerror = function () { cam.worker = null; cam.busyFrame = false; };
+    } catch (e) { cam.worker = null; }
+  })();
+
+  function openStream(id) { return navigator.mediaDevices.getUserMedia(camConstraints(id)); }
   function startScanner() {
-    if (cam.running) { cam.paused = false; loop(); return; }
+    if (cam.running) { resumeScanner(); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      $('startBtn').classList.remove('hidden');
-      camMsg('This browser cannot open the camera. Open the app in Safari (iPhone) or Chrome (Android).');
+      camMsg(IN_APP
+        ? 'This link is open inside another app, which blocks the camera. Tap the ⋯ menu and choose "Open in browser" (Safari or Chrome).'
+        : 'This browser cannot open the camera. Open the app in Safari (iPhone) or Chrome (Android).');
       return;
     }
-    camMsg('Starting camera…');
-    navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } })
-      .then(function (stream) {
-        if (view !== 'vScan') { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
-        cam.stream = stream;
-        var v = $('camVideo');
-        v.setAttribute('playsinline', ''); v.muted = true; v.srcObject = stream;
-        return v.play().then(function () {
-          cam.running = true; cam.paused = false;
-          $('camBox').classList.add('live'); $('startBtn').classList.add('hidden'); camMsg('');
-          setupDetector(); loop();
-        });
-      })
-      .catch(function (err) {
-        stopScanner();
-        $('startBtn').classList.remove('hidden');
-        var m = String((err && (err.name || err.message)) || err || '');
-        camMsg(/NotAllowed|Permission|denied|Security/i.test(m)
-          ? 'Camera access is blocked. iPhone: Settings > Safari > Camera > Allow. Android: tap the lock icon by the address bar > Permissions > Camera > Allow. Then tap Turn on camera.'
-          : /NotFound|Overconstrained|DevicesNotFound/i.test(m) ? 'No camera was found on this device.'
-          : /NotReadable|TrackStart|Abort/i.test(m) ? 'Another app is using the camera. Close it, then tap Turn on camera.'
-          : 'The camera could not start. Tap Turn on camera to try again.');
+    camMsg('Starting camera… If a popup asks to use the camera, tap Allow.');
+    clearTimeout(cam.slow);
+    cam.slow = setTimeout(function () {
+      if (cam.running || view !== 'vScan') return;
+      camMsg(IN_APP
+        ? 'This link is open inside another app (like Instagram or Snapchat), which blocks the camera. Tap the ⋯ menu and choose "Open in browser" (Safari or Chrome).'
+        : 'The camera has not started. If no popup appeared, camera access is turned off for this site. iPhone: Settings > Safari > Camera > Allow. Android Chrome: tap the icon left of the address > Permissions > Camera > Allow. Then tap the pink button again.');
+    }, 6000);
+
+    var saved = store.get('bq_cam');
+    var first = saved ? openStream(saved).catch(function () { store.set('bq_cam', ''); return openStream(''); }) : openStream('');
+    first.then(function (stream) {
+      // Now that we have permission, lens names are visible: switch to the main 1x lens if we are not on it.
+      return navigator.mediaDevices.enumerateDevices().then(function (devs) {
+        cam.backs = backCams(devs);
+        var main = saved ? null : pickMain(devs);
+        if (main && main.deviceId && main.deviceId !== trackId(stream)) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          return openStream(main.deviceId).then(function (s2) { store.set('bq_cam', main.deviceId); return s2; })
+            .catch(function () { return openStream(''); });
+        }
+        if (main && main.deviceId) store.set('bq_cam', main.deviceId);
+        return stream;
+      }).catch(function () { return stream; });
+    }).then(function (stream) {
+      if (!stream) return;
+      if (view !== 'vScan') { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      cam.stream = stream;
+      var track = stream.getVideoTracks()[0];
+      try {
+        var caps = track.getCapabilities ? track.getCapabilities() : {};
+        var adv = {};
+        if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
+        if (caps.zoom) adv.zoom = Math.max(caps.zoom.min || 1, Math.min(1, caps.zoom.max || 1));
+        if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(function () {});
+      } catch (e) {}
+      var v = $('camVideo');
+      v.setAttribute('playsinline', ''); v.muted = true; v.srcObject = stream;
+      return v.play().then(function () {
+        clearTimeout(cam.slow);
+        cam.running = true; cam.paused = false;
+        $('camBox').classList.add('live'); camMsg('');
+        $('camSwitch').classList.toggle('hidden', cam.backs.length < 2);
+        setupDetector(); loop();
       });
+    }).catch(function (err) {
+      clearTimeout(cam.slow);
+      stopScanner();
+      var m = String((err && (err.name || err.message)) || err || '');
+      camMsg(/NotAllowed|Permission|denied|Security/i.test(m)
+        ? 'Camera access is blocked. iPhone: Settings > Safari > Camera > Allow. Android: tap the lock icon by the address bar > Permissions > Camera > Allow. Then tap the pink button.'
+        : /NotFound|Overconstrained|DevicesNotFound/i.test(m) ? 'No camera was found on this device.'
+        : /NotReadable|TrackStart|Abort/i.test(m) ? 'Another app is using the camera. Close it, then tap the pink button.'
+        : 'The camera could not start. Tap the pink button to try again.');
+    });
+  }
+  // Manual lens switch, in case a phone names its lenses oddly. The choice is remembered.
+  function switchLens() {
+    if (cam.backs.length < 2) return;
+    var cur = cam.stream ? trackId(cam.stream) : store.get('bq_cam');
+    var i = 0; for (var k = 0; k < cam.backs.length; k++) if (cam.backs[k].deviceId === cur) i = k;
+    var next = cam.backs[(i + 1) % cam.backs.length];
+    store.set('bq_cam', next.deviceId);
+    stopScanner(); startScanner();
   }
   function setupDetector() {
     cam.detector = null;
@@ -645,20 +731,23 @@
     } catch (e) {}
   }
   function stopScanner() {
-    cam.running = false; cam.paused = false;
+    cam.running = false; cam.paused = false; cam.busyFrame = false;
     cancelAnimationFrame(cam.raf);
     if (cam.stream) { cam.stream.getTracks().forEach(function (t) { t.stop(); }); cam.stream = null; }
     var v = $('camVideo'); if (v) v.srcObject = null;
     $('camBox').classList.remove('live');
   }
   function pauseScanner() { cam.paused = true; $('camBox').classList.remove('live'); }
-  function resumeScanner() { if (!cam.running) { startScanner(); return; } cam.paused = false; $('camBox').classList.add('live'); loop(); }
+  function resumeScanner() {
+    if (!cam.running) { startScanner(); return; }
+    cam.paused = false; cam.busyFrame = false; $('camBox').classList.add('live'); loop();
+  }
   function loop() {
     if (!cam.running || cam.paused) return;
     cancelAnimationFrame(cam.raf);
     cam.raf = requestAnimationFrame(loop);
     var now = Date.now();
-    if (cam.busyFrame || now - cam.last < 90) return;
+    if (cam.busyFrame || now - cam.last < 70) return;
     cam.last = now;
     var v = $('camVideo');
     if (!v || v.readyState < 2 || !v.videoWidth) return;
@@ -670,19 +759,30 @@
       }).catch(function () { cam.busyFrame = false; cam.detector = null; });
       return;
     }
-    if (!window.jsQR) return;
-    // jsQR: read the middle of the frame, shrunk for speed
-    var vw = v.videoWidth, vh = v.videoHeight, side = Math.floor(Math.min(vw, vh) * 0.85);
-    var sx = Math.floor((vw - side) / 2), sy = Math.floor((vh - side) / 2), size = Math.min(520, side);
+    // jsQR: read the centre of the frame. Alternate a tight and a wide crop so close and far codes both read.
+    cam.flip = !cam.flip;
+    var vw = v.videoWidth, vh = v.videoHeight, side = Math.floor(Math.min(vw, vh) * (cam.flip ? 0.62 : 0.95));
+    var sx = Math.floor((vw - side) / 2), sy = Math.floor((vh - side) / 2), size = Math.min(cam.flip ? 420 : 560, side);
     var c = cam.canvas; c.width = size; c.height = size;
     var x = c.getContext('2d', { willReadFrequently: true });
     x.drawImage(v, sx, sy, side, side, 0, 0, size, size);
+    var img = x.getImageData(0, 0, size, size);
+    if (cam.worker) {
+      cam.busyFrame = true;
+      try { cam.worker.postMessage({ buf: img.data.buffer, w: size, h: size }, [img.data.buffer]); }
+      catch (e) { cam.busyFrame = false; cam.worker = null; }
+      return;
+    }
+    if (!window.jsQR) return;
     var r = null;
-    try { r = jsQR(x.getImageData(0, 0, size, size).data, size, size, { inversionAttempts: 'dontInvert' }); } catch (e) {}
+    try { r = jsQR(img.data, size, size, { inversionAttempts: 'dontInvert' }); } catch (e) {}
     if (r && r.data) gotCode(r.data);
   }
   function gotCode(text) {
-    if (busy || !text) return;
+    if (busy || !text || !cam.running || cam.paused) return;
+    if (text === cam.ignore && Date.now() < cam.ignoreUntil) return;
+    cam.ignore = text; cam.ignoreUntil = 0;
+    buzz(40);
     pauseScanner();
     onCode(text);
   }
@@ -691,6 +791,8 @@
     else if (view === 'vScan' && !busy) startScanner();
   });
   $('startBtn').onclick = function () { stopScanner(); startScanner(); };
+  $('camIdle').onclick = function () { stopScanner(); startScanner(); };
+  $('camSwitch').onclick = switchLens;
 
   function onCode(text) {
     if (busy) return;
@@ -817,6 +919,7 @@
   function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
   $('nextBtn').onclick = function () {
     hideVerdict();
+    cam.ignoreUntil = Date.now() + 2500;
     resumeScanner();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
