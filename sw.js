@@ -1,9 +1,10 @@
-// LFIGP Bouncer offline support.
-// Pages: try the network first (so updates show up right away), fall back to the saved copy offline.
-// Libraries, fonts and icons: use the saved copy, refresh it in the background.
-const CACHE = 'bouncer-v5';
+// LFIGP Bouncer offline support + automatic updates.
+// Our own files (pages, scanner, icons): always try the internet first, so reopening the app gets the newest version.
+//   If there is no internet, the last saved copy is used, so the app still opens offline.
+// Libraries from other sites: use the saved copy (they never change), refresh it in the background.
+const CACHE = 'bouncer-v6';
 const SHELL = [
-  'app.html', 'index.html', 'manifest.webmanifest',
+  'app.html', 'index.html', 'camtest.html', 'scanner.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
@@ -11,7 +12,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))));
+  e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => null)))));
   self.skipWaiting();
 });
 
@@ -22,14 +23,16 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET') return;                       // sheet calls (POST) always go to the network
+  if (req.method !== 'GET') return;                        // calls to the sheet always go to the network
   const url = new URL(req.url);
   if (url.hostname.endsWith('script.google.com') || url.hostname.endsWith('googleusercontent.com')) return;
 
-  if (req.mode === 'navigate' || url.pathname.endsWith('.html')) {
-    e.respondWith(fetch(req).then(res => {
-      const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); return res;
-    }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('app.html'))));
+  if (url.origin === self.location.origin) {
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
+      if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+      return res;
+    }).catch(() => caches.match(req, { ignoreSearch: true })
+      .then(r => r || (req.mode === 'navigate' ? caches.match('app.html') : undefined))));
     return;
   }
 
