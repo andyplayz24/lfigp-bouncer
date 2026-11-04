@@ -126,10 +126,10 @@
       <div>
         <div class="tag" style="color:var(--red)">LFIGP · NO TICKET</div>
         <h1>Sorry, you can't get a ticket</h1>
-        <p class="sub">This event is only for grades 11 and 12. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.</p>
+        <p class="sub">This event is only for grades 11 and 12. Because of that, this phone can't sign up for this event anymore, and opening the link again won't work.</p>
       </div>
       <div class="card">
-        <p class="sub" style="color:var(--text)">If you think this is a mistake, talk to <b>Andrea</b> first. Text her on WhatsApp:</p>
+        <p class="sub" style="color:var(--text)">If you think this is a mistake, talk to <b>Andrea</b> first. Text him on WhatsApp:</p>
         <div class="tid" style="text-align:center;font-size:20px;color:var(--text);user-select:all">050 276 2056</div>
         <a class="wa" href="https://wa.me/971502762056" rel="noopener">Text Andrea on WhatsApp</a>
       </div>
@@ -209,21 +209,24 @@
     window.scrollTo(0, 0);
   }
   function showBlocked(info) {
-    blocked = true; store.set('lfigp_blocked', '1');
-    if (info) store.set('lfigp_bi', JSON.stringify(info));
+    blocked = true; store.set(BK, '1');
+    if (info) store.set(BI, JSON.stringify(info));
     show('vBlocked');
   }
   function fill(cls, text) { Array.prototype.forEach.call(document.querySelectorAll('.' + cls), function (el) { el.textContent = text; }); }
 
   // A device that was turned away stays blocked: refreshing or reopening the link shows the same screen.
   // Only Andrea can lift it, by typing YES in the "Unblock" column of the sheet's "Blocked" tab.
-  if (store.get('lfigp_blocked')) showBlocked();
-  var deviceCheck = call({ action: 'checkDevice', device: DEVICE }).then(function (r) {
+  // Blocks are per event: being blocked for one event does not stop sign-ups for a different event.
+  var BK = 'lfigp_blk_' + EVENT_ID.toUpperCase(), BI = 'lfigp_bi_' + EVENT_ID.toUpperCase();
+  store.del('lfigp_blocked'); store.del('lfigp_bi');   // old all-events flag from an earlier version
+  if (EVENT_ID && store.get(BK)) showBlocked();
+  var deviceCheck = (EVENT_ID ? call({ action: 'checkDevice', device: DEVICE, event: EVENT_ID }) : Promise.resolve({})).then(function (r) {
     if (r && r.blocked) { showBlocked(); return; }
-    if (r && r.unblocked) { blocked = false; store.del('lfigp_blocked'); store.del('lfigp_bi'); return; }
+    if (r && r.unblocked) { blocked = false; store.del(BK); store.del(BI); return; }
     if (blocked) {
       // Blocked on this phone but the sheet has no record yet (e.g. they refreshed instantly): record it again.
-      var bi = {}; try { bi = JSON.parse(store.get('lfigp_bi') || '{}'); } catch (e) {}
+      var bi = {}; try { bi = JSON.parse(store.get(BI) || '{}'); } catch (e) {}
       call({ action: 'signup', event: EVENT_ID, name: bi.name || '', grade: bi.grade || '10', email: bi.email || '', device: DEVICE }).catch(function () {});
     }
   }).catch(function () {});
