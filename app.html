@@ -321,7 +321,6 @@
       <video id="camVideo" playsinline muted autoplay></video>
       <div class="corners" aria-hidden="true"><i></i><i></i><i></i><i></i><b class="laser"></b></div>
       <span class="cam-lens" id="camLens"></span>
-      <button class="cam-switch hidden" id="camSwitch" type="button" aria-label="Switch camera lens">&#8635; Lens</button>
       <button class="cam-idle" id="camIdle" type="button"><span class="cam-ico">&#9673;</span><span>Tap to turn on camera</span></button>
     </div>
     <div class="cam-msg hidden" id="camMsg" role="status"></div>
@@ -662,8 +661,6 @@
     } else if (kind === 'live') {
       camMsg(''); $('camLens').textContent = info || '';
       if (!busy) $('camBox').classList.add('live');
-    } else if (kind === 'lenses') {
-      $('camSwitch').classList.toggle('hidden', !(info > 1));
     } else if (kind === 'restarting') {
       camMsg('Restarting camera…');
     } else if (kind === 'stopped') {
@@ -683,7 +680,6 @@
     QRCam.resume();
     if (QRCam.isLive()) $('camBox').classList.add('live');
   }
-  function switchLens() { if (window.QRCam) QRCam.switchLens(); }
   function gotCode(text) {
     if (busy || !text || !window.QRCam || !QRCam.isLive()) return;
     if (text === cam.ignore && Date.now() < cam.ignoreUntil) return;
@@ -698,7 +694,6 @@
   });
   $('startBtn').onclick = function () { stopScanner(); startScanner(); };
   $('camIdle').onclick = function () { stopScanner(); startScanner(); };
-  $('camSwitch').onclick = switchLens;
 
   function onCode(text) {
     if (busy) return;

@@ -16,7 +16,6 @@
   };
 
   function status(kind, info) { try { if (st.onStatus) st.onStatus(kind, info || ''); } catch (e) {} }
-  function savedLens() { try { return localStorage.getItem('bq_lens') || ''; } catch (e) { return ''; } }
   function saveLens(l) { try { localStorage.setItem('bq_lens', l || ''); } catch (e) {} }
   function label(s) { var t = s && s.getVideoTracks && s.getVideoTracks()[0]; return (t && t.label) || ''; }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -55,7 +54,10 @@
     v.srcObject = stream;
     try {
       var t = stream.getVideoTracks()[0], caps = t.getCapabilities ? t.getCapabilities() : {};
-      if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
+      var adv = {};
+      if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
+      if (caps.zoom) adv.zoom = Math.min(Math.max(caps.zoom.min || 1, 1), caps.zoom.max || 1);
+      if (Object.keys(adv).length) t.applyConstraints({ advanced: [adv] }).catch(function () {});
     } catch (e) {}
     // play() never resolves on a few iPhones even though frames arrive, so don't wait on it forever.
     var p; try { p = v.play(); } catch (e) { p = null; }
@@ -73,6 +75,35 @@
     }, 5000);
   }
 
+  function listBacks() {
+    return navigator.mediaDevices.enumerateDevices()
+      .then(function (devs) { return devs.filter(function (d) { return d.kind === 'videoinput' && BACK.test(d.label || ''); }); })
+      .catch(function () { return []; });
+  }
+
+  // Always the main 1x lens. The camera is only shown once we are on it, so another lens never flashes up.
+  function openMain() {
+    return listBacks().then(function (backs) {
+      st.backs = backs;
+      var main = pickMain(backs);
+      if (main && main.deviceId) {
+        // Permission was given before, so lens names are known: open the 1x lens directly.
+        return timeout(openDevice(main.deviceId), 8000).catch(function () { return timeout(openDefault(), 12000); });
+      }
+      // First time on this phone: lens names stay hidden until the camera is allowed.
+      return timeout(openDefault(), 12000).then(function (s) {
+        return listBacks().then(function (backs2) {
+          st.backs = backs2;
+          var m2 = pickMain(backs2);
+          if (!m2 || !m2.deviceId || m2.label === label(s)) return s;
+          s.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+          return wait(300).then(function () { return timeout(openDevice(m2.deviceId), 8000); })
+            .catch(function () { return timeout(openDefault(), 12000); });
+        });
+      });
+    });
+  }
+
   function start(video, onCode, onStatus) {
     if (video) st.video = video;
     if (onCode) st.onCode = onCode;
@@ -81,58 +112,14 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status('error', 'NoCamera'); return; }
     var token = ++st.token;
     status('starting');
-    timeout(openDefault(), 12000)
+    openMain()
       .then(function (stream) { return attach(stream, token); })
-      .then(function (ok) {
-        if (!ok) return;
-        goLive(token);
-        return checkLens(token);
-      })
+      .then(function (ok) { if (ok) goLive(token); })
       .catch(function (err) {
         if (token !== st.token) return;
         stopTracks(); st.running = false;
         status('error', String((err && (err.name || err.message)) || err));
       });
-  }
-
-  // After the camera is already live: move to the main 1x lens if needed. Any failure here falls back to the default camera.
-  function checkLens(token) {
-    return navigator.mediaDevices.enumerateDevices().then(function (devs) {
-      if (token !== st.token) return;
-      st.backs = devs.filter(function (d) { return d.kind === 'videoinput' && BACK.test(d.label || ''); });
-      status('lenses', st.backs.length);
-      var cur = label(st.stream), saved = savedLens(), want = null;
-      if (saved) want = st.backs.filter(function (d) { return d.label === saved; })[0] || null;
-      if (!want && NOT_MAIN.test(cur)) want = pickMain(st.backs);
-      if (want && want.deviceId && want.label !== cur) return switchTo(want, token);
-    }).catch(function () {});
-  }
-
-  function switchTo(dev, token) {
-    st.running = false; cancelAnimationFrame(st.raf);
-    stopTracks();
-    status('starting');
-    return wait(350)
-      .then(function () { return timeout(openDevice(dev.deviceId), 6000); })
-      .then(function (s) { return attach(s, token); })
-      .then(function (ok) { if (!ok) return; saveLens(dev.label); goLive(token); })
-      .catch(function () {
-        if (token !== st.token) return;
-        saveLens('');
-        return timeout(openDefault(), 8000)
-          .then(function (s) { return attach(s, token); })
-          .then(function (ok) { if (ok) goLive(token); })
-          .catch(function (e) { status('error', String((e && (e.name || e.message)) || e)); });
-      });
-  }
-
-  function switchLens() {
-    if (st.backs.length < 2) return;
-    var cur = label(st.stream), i = -1;
-    st.backs.forEach(function (d, k) { if (d.label === cur) i = k; });
-    var next = st.backs[(i + 1) % st.backs.length];
-    saveLens(next.label);
-    switchTo(next, st.token);
   }
 
   function stop() {
@@ -214,8 +201,9 @@
     if (r && r.data) found(r.data);
   }
 
+  try { localStorage.removeItem('bq_lens'); } catch (e) {}
   window.QRCam = {
-    start: start, stop: stop, pause: pause, resume: resume, restart: restart, switchLens: switchLens,
+    start: start, stop: stop, pause: pause, resume: resume, restart: restart,
     isLive: function () { return st.running && !st.paused; },
     lensCount: function () { return st.backs.length; },
     lensName: function () { return label(st.stream); },

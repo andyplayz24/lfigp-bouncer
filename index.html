@@ -118,7 +118,8 @@
           <div class="tid" id="tId"></div>
         </div>
       </div>
-      <p class="hint">Screenshot this ticket and show it at the door. One ticket per person.</p>
+      <button id="saveBtn" type="button">Save ticket to Photos</button>
+      <p class="hint" id="mailHint">Show this QR code at the door. It works once, so don't share it.</p>
     </div>
 
     <div class="view" id="vBlocked">
@@ -139,15 +140,64 @@
 (function () {
   var API = 'https://script.google.com/macros/s/AKfycbyPPVz5aTOPchqY-gLZQHAKvSbPzOoAP-PtlQ0CxBHIl9lAvvSKUf9ifcSeobZWCeXcYw/exec';
   var $ = function (id) { return document.getElementById(id); };
+  // Saved twice (browser storage + a cookie) so a refresh or reopening the link on this phone keeps it.
+  function cget(k) { var m = document.cookie.match(new RegExp('(?:^|; )' + k + '=([^;]*)')); return m ? decodeURIComponent(m[1]) : ''; }
+  function cset(k, v) { try { document.cookie = k + '=' + encodeURIComponent(v) + '; max-age=31536000; path=/; SameSite=Lax; Secure'; } catch (e) {} }
   var store = {
-    get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
-    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
-    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+    get: function (k) { var v = ''; try { v = localStorage.getItem(k) || ''; } catch (e) {} return v || cget(k); },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} cset(k, v); },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} try { document.cookie = k + '=; max-age=0; path=/'; } catch (e) {} }
   };
   var EVENT_ID = (new URLSearchParams(location.search).get('event') || '').trim();
   var DEVICE = store.get('lfigp_dev');
-  if (!DEVICE) { DEVICE = 'D' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); store.set('lfigp_dev', DEVICE); }
-  var current = 'vLoading', blocked = false;
+  if (!DEVICE) DEVICE = 'D' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  store.set('lfigp_dev', DEVICE);
+  var current = 'vLoading', blocked = false, ticket = null;
+
+  // "Save ticket": draws the ticket as one picture. iPhone opens the share sheet (tap "Save Image"); others download it.
+  function ticketImage() {
+    var W = 1080, H = 1620, c = document.createElement('canvas'); c.width = W; c.height = H;
+    var x = c.getContext('2d');
+    x.fillStyle = '#120e2b'; x.fillRect(0, 0, W, H);
+    x.fillStyle = '#ff7aa8'; x.font = '700 34px ui-monospace, Menlo, monospace'; x.fillText('LFIGP · ENTRY TICKET', 80, 130);
+    x.fillStyle = '#fff8ef'; roundRect(x, 60, 170, W - 120, H - 260, 48); x.fill();
+    x.fillStyle = '#120e2b'; x.font = '800 64px -apple-system, Segoe UI, Roboto, sans-serif';
+    wrap(x, ticket.event, 120, 290, W - 240, 72);
+    x.font = '400 34px -apple-system, Segoe UI, Roboto, sans-serif'; x.fillStyle = '#6f66a3';
+    if (ticket.date) x.fillText(ticket.date, 120, 400);
+    x.font = '600 28px -apple-system, Segoe UI, Roboto, sans-serif'; x.fillText('GUEST', 120, 480); x.textAlign = 'right'; x.fillText('GRADE', W - 120, 480);
+    x.fillStyle = '#120e2b'; x.font = '700 46px -apple-system, Segoe UI, Roboto, sans-serif';
+    x.fillText(String(ticket.grade), W - 120, 540); x.textAlign = 'left'; x.fillText(String(ticket.name).slice(0, 26), 120, 540);
+    x.strokeStyle = '#d9d3e6'; x.lineWidth = 4; x.setLineDash([18, 14]); x.beginPath(); x.moveTo(110, 610); x.lineTo(W - 110, 610); x.stroke(); x.setLineDash([]);
+    var q = document.querySelector('#qr canvas') || document.querySelector('#qr img');
+    if (q) { x.imageSmoothingEnabled = false; x.drawImage(q, (W - 720) / 2, 660, 720, 720); }
+    x.textAlign = 'center'; x.font = '700 44px ui-monospace, Menlo, monospace'; x.fillText(ticket.id, W / 2, 1450);
+    return c;
+  }
+  function roundRect(x, l, t, w, h, r) { x.beginPath(); x.moveTo(l + r, t); x.arcTo(l + w, t, l + w, t + h, r); x.arcTo(l + w, t + h, l, t + h, r); x.arcTo(l, t + h, l, t, r); x.arcTo(l, t, l + w, t, r); x.closePath(); }
+  function wrap(x, text, l, t, maxW, lh) {
+    var words = String(text).split(' '), line = '', y = t;
+    for (var i = 0; i < words.length; i++) {
+      var test = line ? line + ' ' + words[i] : words[i];
+      if (x.measureText(test).width > maxW && line) { x.fillText(line, l, y); line = words[i]; y += lh; } else line = test;
+    }
+    x.fillText(line, l, y);
+  }
+  function saveTicket() {
+    if (!ticket) return;
+    var btn = $('saveBtn');
+    ticketImage().toBlob(function (blob) {
+      if (!blob) return;
+      var file = new File([blob], 'LFIGP-ticket-' + ticket.id + '.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'My LFIGP ticket' }).catch(function () {});
+      } else {
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        btn.textContent = 'Saved to your downloads';
+      }
+    }, 'image/png');
+  }
 
   function call(p) {
     return fetch(API, { method: 'POST', body: JSON.stringify(p), headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -158,26 +208,38 @@
     Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) { v.classList.toggle('on', v.id === id); });
     window.scrollTo(0, 0);
   }
-  function showBlocked() { blocked = true; store.set('lfigp_blocked', '1'); show('vBlocked'); }
+  function showBlocked(info) {
+    blocked = true; store.set('lfigp_blocked', '1');
+    if (info) store.set('lfigp_bi', JSON.stringify(info));
+    show('vBlocked');
+  }
   function fill(cls, text) { Array.prototype.forEach.call(document.querySelectorAll('.' + cls), function (el) { el.textContent = text; }); }
 
-  // A device that was turned away stays blocked. Andrea can unblock it in the sheet's "Blocked" tab.
+  // A device that was turned away stays blocked: refreshing or reopening the link shows the same screen.
+  // Only Andrea can lift it, by typing YES in the "Unblock" column of the sheet's "Blocked" tab.
   if (store.get('lfigp_blocked')) showBlocked();
-  call({ action: 'checkDevice', device: DEVICE }).then(function (r) {
-    if (r && r.blocked) showBlocked();
-    else if (blocked) { blocked = false; store.del('lfigp_blocked'); loadEvent(); }
+  var deviceCheck = call({ action: 'checkDevice', device: DEVICE }).then(function (r) {
+    if (r && r.blocked) { showBlocked(); return; }
+    if (r && r.unblocked) { blocked = false; store.del('lfigp_blocked'); store.del('lfigp_bi'); return; }
+    if (blocked) {
+      // Blocked on this phone but the sheet has no record yet (e.g. they refreshed instantly): record it again.
+      var bi = {}; try { bi = JSON.parse(store.get('lfigp_bi') || '{}'); } catch (e) {}
+      call({ action: 'signup', event: EVENT_ID, name: bi.name || '', grade: bi.grade || '10', email: bi.email || '', device: DEVICE }).catch(function () {});
+    }
   }).catch(function () {});
 
   function loadEvent() {
     if (blocked) return;
     if (!EVENT_ID) { show('vInvalid'); return; }
-    call({ action: 'eventInfo', event: EVENT_ID }).then(function (r) {
+    Promise.all([call({ action: 'eventInfo', event: EVENT_ID }), deviceCheck]).then(function (all) {
+      var r = all[0];
       if (blocked) return;
       if (!r || !r.ok) { show('vInvalid'); return; }
       var ev = r.event;
       document.title = ev.name + ' · LFIGP Tickets';
       fill('evName', ev.name);
       fill('evMeta', ev.date || 'Sign up to get your QR ticket.');
+      document.querySelector('#vTicket .evMeta').textContent = ev.date || '';
       show(ev.open ? 'vForm' : 'vClosed');
     }).catch(function () {
       $('invalidMsg').textContent = 'No internet connection. Connect and reload this page.';
@@ -186,6 +248,7 @@
   }
   loadEvent();
 
+  $('saveBtn').onclick = saveTicket;
   $('f').addEventListener('submit', function (e) {
     e.preventDefault();
     var name = $('name').value.trim(), email = $('email').value.trim(), grade = $('grade').value;
@@ -193,7 +256,7 @@
     err.textContent = '';
     if (!grade) { err.textContent = 'Pick your grade.'; return; }
     if (grade !== '11' && grade !== '12') {
-      showBlocked();
+      showBlocked({ name: name, email: email, grade: grade });
       call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, device: DEVICE }).catch(function () {});
       return;
     }
@@ -202,13 +265,15 @@
     var btn = $('btn');
     btn.disabled = true; btn.textContent = 'Getting your ticket…';
     call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, device: DEVICE }).then(function (res) {
-      if (res && (res.blocked || res.kicked)) { showBlocked(); return; }
+      if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: grade }); return; }
       if (!res || !res.ok) {
         err.textContent = (res && res.error) || 'Something went wrong. Try again.';
         btn.disabled = false; btn.textContent = 'Get my ticket';
         return;
       }
       $('tName').textContent = res.name; $('tGrade').textContent = res.grade; $('tId').textContent = res.id;
+      ticket = { name: res.name, grade: res.grade, id: res.id, code: res.code, event: res.eventName || document.querySelector('#vTicket .ev').textContent, date: (document.querySelector('#vTicket .evMeta') || {}).textContent || '' };
+      $('mailHint').textContent = 'We also emailed this ticket to ' + email + '. Show the QR code at the door. It works once, so don\'t share it.';
       $('qr').innerHTML = '';
       new QRCode($('qr'), { text: res.code, width: 440, height: 440, colorDark: '#120e2b', colorLight: '#fff8ef', correctLevel: QRCode.CorrectLevel.M });
       show('vTicket');

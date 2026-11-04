@@ -41,13 +41,11 @@
   <div class="row">
     <b>Camera</b><span id="s">off</span>
     <b>Lens</b><span id="lens">–</span>
+    <b>Should say</b><span>"Back Camera" on iPhone (the 1x lens)</span>
     <b>Reader</b><span id="eng">–</span>
     <b>Read time</b><span id="ms">–</span>
   </div>
-  <div class="btns">
-    <button class="b" id="sw" type="button">Switch lens</button>
-    <button class="b" id="rs" type="button">Restart camera</button>
-  </div>
+  <button class="b" id="rs" type="button">Restart camera</button>
   <p><a href="app.html">Back to the Bouncer app</a></p>
 </div>
 <script>
@@ -58,7 +56,6 @@
     if (kind === 'starting') { t0 = Date.now(); $('s').textContent = 'starting… (tap Allow if asked)'; $('box').classList.remove('live'); }
     if (kind === 'live') { $('s').textContent = 'live'; $('lens').textContent = info || 'unknown'; $('box').classList.add('live'); t0 = Date.now();
       setTimeout(function () { $('eng').textContent = QRCam.engine(); }, 800); }
-    if (kind === 'lenses') { $('sw').disabled = !(info > 1); }
     if (kind === 'error') { $('s').textContent = 'error: ' + info; $('box').classList.remove('live'); }
     if (kind === 'restarting') $('s').textContent = 'restarting…';
   }
@@ -74,7 +71,6 @@
   function go() { QRCam.start($('v'), onCode, onStatus); }
   $('tap').onclick = function () { QRCam.stop(); go(); };
   $('rs').onclick = function () { QRCam.stop(); go(); };
-  $('sw').onclick = function () { QRCam.switchLens(); };
   go();
 })();
 </script>
