@@ -126,7 +126,7 @@
       <div>
         <div class="tag" style="color:var(--red)">LFIGP · NO TICKET</div>
         <h1>Sorry, you can't get a ticket</h1>
-        <p class="sub">This event is only for grades 11 and 12. Because of that, this phone can't sign up for this event anymore, and opening the link again won't work.</p>
+        <p class="sub">This event is only for grades 11 and 12. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.</p>
       </div>
       <div class="card">
         <p class="sub" style="color:var(--text)">If you think this is a mistake, talk to <b>Andrea</b> first. Text him on WhatsApp:</p>
@@ -217,11 +217,10 @@
 
   // A device that was turned away stays blocked: refreshing or reopening the link shows the same screen.
   // Only Andrea can lift it, by typing YES in the "Unblock" column of the sheet's "Blocked" tab.
-  // Blocks are per event: being blocked for one event does not stop sign-ups for a different event.
-  var BK = 'lfigp_blk_' + EVENT_ID.toUpperCase(), BI = 'lfigp_bi_' + EVENT_ID.toUpperCase();
-  store.del('lfigp_blocked'); store.del('lfigp_bi');   // old all-events flag from an earlier version
-  if (EVENT_ID && store.get(BK)) showBlocked();
-  var deviceCheck = (EVENT_ID ? call({ action: 'checkDevice', device: DEVICE, event: EVENT_ID }) : Promise.resolve({})).then(function (r) {
+  // Blocked once = blocked for every event on this phone.
+  var BK = 'lfigp_blocked', BI = 'lfigp_bi';
+  if (store.get(BK)) showBlocked();
+  var deviceCheck = call({ action: 'checkDevice', device: DEVICE }).then(function (r) {
     if (r && r.blocked) { showBlocked(); return; }
     if (r && r.unblocked) { blocked = false; store.del(BK); store.del(BI); return; }
     if (blocked) {
