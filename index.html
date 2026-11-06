@@ -91,6 +91,10 @@
           <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required maxlength="120">
         </div>
         <div class="field">
+          <label for="phone">WhatsApp number</label>
+          <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="050 123 4567" required maxlength="20">
+        </div>
+        <div class="field">
           <label for="grade">Grade</label>
           <select id="grade" required>
             <option value="" disabled selected>Select your grade</option>
@@ -229,7 +233,7 @@
       if (Date.now() - at < 120000) {
         // Blocked moments ago but the sheet has no record yet (e.g. they refreshed instantly): record it again.
         var bi = {}; try { bi = JSON.parse(store.get(BI) || '{}'); } catch (e) {}
-        call({ action: 'signup', event: EVENT_ID, name: bi.name || '', grade: bi.grade || '10', email: bi.email || '', device: DEVICE }).catch(function () {});
+        call({ action: 'signup', event: EVENT_ID, name: bi.name || '', grade: bi.grade || '10', email: bi.email || '', phone: bi.phone || '', device: DEVICE }).catch(function () {});
       } else {
         // The row was deleted from the "Blocked" tab: that counts as unblocking this phone.
         lift();
@@ -260,21 +264,22 @@
   $('saveBtn').onclick = saveTicket;
   $('f').addEventListener('submit', function (e) {
     e.preventDefault();
-    var name = $('name').value.trim(), email = $('email').value.trim(), grade = $('grade').value;
+    var name = $('name').value.trim(), email = $('email').value.trim(), grade = $('grade').value, phone = $('phone').value.trim();
     var err = $('err');
     err.textContent = '';
     if (!grade) { err.textContent = 'Pick your grade.'; return; }
     if (grade !== '11' && grade !== '12') {
-      showBlocked({ name: name, email: email, grade: grade });
-      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, device: DEVICE }).catch(function () {});
+      showBlocked({ name: name, email: email, grade: grade, phone: phone });
+      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).catch(function () {});
       return;
     }
     if (name.split(/\s+/).length < 2) { err.textContent = 'Please enter your full name (first and last).'; return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Please enter a valid email address.'; return; }
+    if (phone.replace(/\D/g, '').length < 8) { err.textContent = 'Please enter your WhatsApp number.'; return; }
     var btn = $('btn');
     btn.disabled = true; btn.textContent = 'Getting your ticket…';
-    call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, device: DEVICE }).then(function (res) {
-      if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: grade }); return; }
+    call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).then(function (res) {
+      if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: grade, phone: phone }); return; }
       if (!res || !res.ok) {
         err.textContent = (res && res.error) || 'Something went wrong. Try again.';
         btn.disabled = false; btn.textContent = 'Get my ticket';
