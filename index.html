@@ -216,9 +216,24 @@
     blocked = true; if (info || !store.get(BK)) store.set(BK, String(Date.now()));
     if (info) store.set(BI, JSON.stringify(info));
     var bi = info; if (!bi) { try { bi = JSON.parse(store.get(BI) || '{}'); } catch (e) { bi = {}; } }
-    if (bi && bi.why === 'phone') $('blockWhy').textContent = "That WhatsApp number isn't a real one. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.";
-    if (bi && bi.why === 'email') $('blockWhy').textContent = "You used a fake email twice. Your QR ticket is sent by email, so a real one is needed. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.";
+    $('blockWhy').textContent = blockReasonText(bi || {});
     show('vBlocked');
+  }
+  // The exact reason, shown on the "Sorry" screen.
+  function blockReasonText(bi) {
+    var end = ' Because of that, sign-ups from this device are now blocked, and opening the link again won\'t work.';
+    var why;
+    if (bi.why === 'phone') why = 'The WhatsApp number you entered' + (bi.phone ? ' (' + bi.phone + ')' : '') + ' is not a valid number.';
+    else if (bi.why === 'email') why = 'You entered an email that is not valid, twice. Your QR ticket is sent to your email, so a real one is needed.';
+    else if (bi.why === 'banned') why = 'You were banned by the organisers.';
+    else why = 'You picked grade ' + (bi.grade || '9 or 10') + '. This event is only for grades 11 and 12.';
+    if (bi.matched) {
+      var what = { device: 'This phone or laptop', phone: 'Your WhatsApp number', email: 'Your email', name: 'Your name' }[bi.matched] || 'Your details';
+      var short = { phone: 'a fake WhatsApp number', email: 'a fake email used twice', banned: 'being banned by the organisers' }[bi.why] ||
+        ('signing up as grade ' + (bi.grade || '9 or 10'));
+      why = what + ' matches someone who is already blocked (blocked for ' + short + ').';
+    }
+    return 'The reason: ' + why + end;
   }
   function fill(cls, text) { Array.prototype.forEach.call(document.querySelectorAll('.' + cls), function (el) { el.textContent = text; }); }
 
@@ -228,7 +243,11 @@
   var BK = 'lfigp_blocked', BI = 'lfigp_bi';
   if (store.get(BK)) showBlocked();
   var deviceCheck = call({ action: 'checkDevice', device: DEVICE }).then(function (r) {
-    if (r && r.blocked) { showBlocked(); return; }
+    if (r && r.blocked) {
+      var old = {}; try { old = JSON.parse(store.get(BI) || '{}'); } catch (e) {}
+      if (r.why && !old.why) { old.why = r.why; old.grade = r.grade || old.grade; store.set(BI, JSON.stringify(old)); }
+      showBlocked(); return;
+    }
     function lift() { blocked = false; store.del(BK); store.del(BI); show('vLoading'); loadEvent(); }
     if (r && r.unblocked) { lift(); return; }
     if (blocked && r && r.ok) {
@@ -293,7 +312,7 @@
     var btn = $('btn');
     btn.disabled = true; btn.textContent = 'Getting your ticket…';
     call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).then(function (res) {
-      if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: grade, phone: phone, why: res.why || '' }); return; }
+      if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: res.grade || grade, phone: phone, why: res.why || '', matched: res.matched || '' }); return; }
       if (!res || !res.ok) {
         err.textContent = (res && res.error) || 'Something went wrong. Try again.';
         btn.disabled = false; btn.textContent = 'Get my ticket';
