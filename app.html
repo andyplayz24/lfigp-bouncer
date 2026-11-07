@@ -567,7 +567,7 @@
     if (!guests.length) { $('gList').innerHTML = '<div class="empty">' + (loading ? 'Loading guests…' : '<b>No one yet</b>Share the sign-up link to start filling the list.') + '</div>'; return; }
     $('gList').innerHTML = list.map(function (g) {
       return '<div class="guest"><div class="av" style="background:' + avColor(g.id) + '">' + esc(initials(g.name).toUpperCase()) + '</div>' +
-        '<div class="g"><div class="gn">' + esc(g.name) + (g.suspicious ? ' <span style="color:var(--red,#ff5a6a);font-weight:800">⚠ Suspicious</span>' : '') + '</div><div class="gs"><span>Grade ' + esc(g.grade) + '</span>' +
+        '<div class="g"><div class="gn">' + esc(g.name) + (g.removed ? ' <span style="color:var(--red,#ff5a6a);font-weight:800">' + (g.removed === 'ban' ? '⛔ Banned' : '✕ Removed') + '</span>' : (g.suspicious ? ' <span style="color:var(--red,#ff5a6a);font-weight:800">⚠ Suspicious</span>' : (g.check ? ' <span style="color:var(--sun,#ffc24b);font-weight:800">❔ Check ID</span>' : ''))) + '</div><div class="gs"><span>Grade ' + esc(g.grade) + '</span>' +
         (g.checkedIn ? '<span class="in">✓ In ' + esc(String(g.time).replace(/^.*, /, '')) + (g.by ? ' · ' + esc(g.by) : '') + '</span>' : '<span>Not in yet</span>') +
         '</div></div><button class="pay' + (g.paid ? ' yes' : '') + '" data-t="' + esc(g.id) + '">' + (g.paid ? 'PAID' : 'NOT PAID') + '</button></div>';
     }).join('') || '<div class="empty">No one matches that.</div>';
@@ -712,12 +712,14 @@
     var g = guests.find(function (x) { return x.id.toUpperCase() === t; });
     if (!g) { buzz([200, 100, 200]); return verdict('bad', 'Not on the list', 'Not in the saved guest list', 'Offline: if they signed up very recently, check again once online.', '', null); }
     var who = g.name, what = 'Grade ' + g.grade + ' · ' + (g.paid ? 'Paid' : 'Not paid');
+    if (g.removed) { buzz([400, 120, 400, 120, 400]); return verdict('bad', g.removed === 'ban' ? 'Banned' : 'Removed', who, 'Taken off the list. Do not let in.', 'Tell them to text Andrea · ' + g.id, null); }
     if (g.suspicious) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Suspicious', who, 'Matches the Blocked list. Do not let in.', 'Tell them to text Andrea · ' + g.id, null); }
     if ([11, 12].indexOf(Number(g.grade)) < 0) { buzz([200, 100, 200]); return verdict('bad', 'Bounced', who, 'Only grades 11 & 12 allowed', g.id, null); }
-    if (g.checkedIn) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Already used', who, 'This ticket was already scanned. Do not let in.', 'Used ' + g.time + (g.by ? ' · scanned by ' + g.by : ''), null); }
+    if (g.checkedIn) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Already used: fake copy', who, 'This QR was already scanned. Whoever has it now is using a copied or shared ticket. Do NOT let in.', 'Used ' + g.time + (g.by ? ' · scanned by ' + g.by : ''), null); }
     g.checkedIn = true; g.time = 'offline'; g.by = cfg.me; jset('bq_g_' + cur.id, guests); localStats();
     lastScan = { id: g.id, name: g.name, grade: g.grade, paid: g.paid, offline: true };
     buzz(150);
+    if (g.check) return verdict('warn', 'Check ID first', who, what + ' · email may be fake', 'Saved offline · syncs when back online', g.paid ? true : false);
     if (g.paid) verdict('ok', 'Let them in', who, what, 'Saved offline · syncs when back online', true);
     else verdict('warn', 'Collect payment', who, what, 'Saved offline · syncs when back online', false);
   }
@@ -734,10 +736,12 @@
       if (g && r.eligible && !r.alreadyCheckedIn) { g.checkedIn = true; g.time = r.time; g.by = r.by; }
       if (g && r.suspicious) g.suspicious = true;
       var who = r.name, what = 'Grade ' + r.grade + ' · ' + (r.paid ? 'Paid' : 'Not paid');
+      if (r.removed) { buzz([400, 120, 400, 120, 400]); return verdict('bad', r.removed === 'ban' ? 'Banned' : 'Removed', who, r.removed === 'ban' ? 'Banned by the organisers. Do not let in.' : 'Taken off the list for this event. Do not let in.', 'Tell them to text Andrea · ' + r.id, null); }
       if (r.suspicious) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Suspicious', who, (r.reason || 'Matches the Blocked list') + '. Do not let in.', 'Tell them to text Andrea · ' + r.id, null); }
       if (!r.eligible) { buzz([200, 100, 200]); return verdict('bad', 'Bounced', who, 'Grade ' + r.grade + ' · only 11 & 12 allowed', r.id, null); }
-      if (r.alreadyCheckedIn) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Already used', who, 'This ticket was already scanned. Do not let in.', 'Used ' + r.time + (r.by ? ' · scanned by ' + r.by : ''), null); }
+      if (r.alreadyCheckedIn) { buzz([400, 120, 400, 120, 400]); return verdict('bad', 'Already used: fake copy', who, 'This QR was already scanned. Whoever has it now is using a copied or shared ticket. Do NOT let in.', 'Used ' + r.time + (r.by ? ' · scanned by ' + r.by : ''), null); }
       buzz(150);
+      if (r.check) { buzz([200, 100, 200]); return verdict('warn', 'Check ID first', who, what + ' · ' + r.check, 'Let in by ' + (r.by || cfg.me) + ' · ' + r.time, r.paid ? true : false); }
       if (r.paid) verdict('ok', 'Let them in', who, what, 'Let in by ' + (r.by || cfg.me) + ' · ' + r.time, true);
       else verdict('warn', 'Collect payment', who, what, 'Let in by ' + (r.by || cfg.me) + ' · ' + r.time, false);
     }).catch(function () { setLive(false); offlineScan(code); });

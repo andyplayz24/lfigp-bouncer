@@ -122,7 +122,7 @@
           <div class="tid" id="tId"></div>
         </div>
       </div>
-      <button id="saveBtn" type="button">Save ticket to Photos</button>
+      <button id="saveBtn" type="button">Save to Photos / Send to WhatsApp</button>
       <p class="hint" id="mailHint">Show this QR code at the door. It works once, so don't share it.</p>
     </div>
 
@@ -130,7 +130,7 @@
       <div>
         <div class="tag" style="color:var(--red)">LFIGP · NO TICKET</div>
         <h1>Sorry, you can't get a ticket</h1>
-        <p class="sub">This event is only for grades 11 and 12. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.</p>
+        <p class="sub" id="blockWhy">This event is only for grades 11 and 12. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.</p>
       </div>
       <div class="card">
         <p class="sub" style="color:var(--text)">If you think this is a mistake, talk to <b>Andrea</b> first. Text him on WhatsApp:</p>
@@ -158,7 +158,7 @@
   store.set('lfigp_dev', DEVICE);
   var current = 'vLoading', blocked = false, ticket = null;
 
-  // "Save ticket": draws the ticket as one picture. iPhone opens the share sheet (tap "Save Image"); others download it.
+  // "Save ticket": draws the ticket as one picture and opens the phone's share sheet: "Save Image" puts it in Photos, WhatsApp sends it. Computers download it.
   function ticketImage() {
     var W = 1080, H = 1620, c = document.createElement('canvas'); c.width = W; c.height = H;
     var x = c.getContext('2d');
@@ -215,6 +215,9 @@
   function showBlocked(info) {
     blocked = true; if (info || !store.get(BK)) store.set(BK, String(Date.now()));
     if (info) store.set(BI, JSON.stringify(info));
+    var bi = info; if (!bi) { try { bi = JSON.parse(store.get(BI) || '{}'); } catch (e) { bi = {}; } }
+    if (bi && bi.why === 'phone') $('blockWhy').textContent = "That WhatsApp number isn't a real one. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.";
+    if (bi && bi.why === 'email') $('blockWhy').textContent = "You used a fake email twice. Your QR ticket is sent by email, so a real one is needed. Because of that, sign-ups from this device are now blocked, and opening the link again won't work.";
     show('vBlocked');
   }
   function fill(cls, text) { Array.prototype.forEach.call(document.querySelectorAll('.' + cls), function (el) { el.textContent = text; }); }
@@ -274,12 +277,23 @@
       return;
     }
     if (name.split(/\s+/).length < 2) { err.textContent = 'Please enter your full name (first and last).'; return; }
+    var words = name.split(/\s+/);
+    if (!/^[\p{L}' .-]+$/u.test(name)) { err.textContent = 'Your name can only have letters (no numbers or symbols).'; return; }
+    if (words.some(function (w) { return w.replace(/[^\p{L}]/gu, '').length < 2; }) || /(\p{L})\1\1/iu.test(name) ||
+        words.some(function (w) { return /^[A-Za-z'.-]+$/.test(w) && w.length > 3 && !/[aeiouy]/i.test(w); })) { err.textContent = 'Please enter your real first and last name.'; return; }
+    var pd = phone.replace(/\D/g, '');
+    if (!pd) { err.textContent = 'Please enter your WhatsApp number.'; return; }
+    if (!(/^(?:00971|971|0)?5[024568]\d{7}$/.test(pd) || (/^(\+|00)/.test(phone) && pd.replace(/^00/, '').length >= 10 && pd.replace(/^00/, '').length <= 15 && !/^(\d)\1+$/.test(pd)))) {
+      // A fake-looking WhatsApp number is treated like a wrong grade: this device is blocked.
+      showBlocked({ name: name, email: email, grade: grade, phone: phone, why: 'phone' });
+      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).catch(function () {});
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Please enter a valid email address.'; return; }
-    if (phone.replace(/\D/g, '').length < 8) { err.textContent = 'Please enter your WhatsApp number.'; return; }
     var btn = $('btn');
     btn.disabled = true; btn.textContent = 'Getting your ticket…';
     call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).then(function (res) {
-      if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: grade, phone: phone }); return; }
+      if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: grade, phone: phone, why: res.why || '' }); return; }
       if (!res || !res.ok) {
         err.textContent = (res && res.error) || 'Something went wrong. Try again.';
         btn.disabled = false; btn.textContent = 'Get my ticket';
