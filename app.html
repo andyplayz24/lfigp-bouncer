@@ -182,6 +182,7 @@
   .unlock svg { width:96px; height:96px; border-radius:28px; box-shadow:0 18px 40px -16px rgba(255,79,139,.7); }
   .unlock h2 { font-size:34px; }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+  body.scanner-only .admin-only { display: none !important; }
 </style>
 </head>
 <body>
@@ -242,7 +243,7 @@
   <section id="vEvents" class="hidden">
     <div class="row-between">
       <div><div class="eyebrow" id="hello">Your events</div><h2 id="evHeadline">Who's on the list?</h2></div>
-      <button class="btn btn-pink btn-small" id="newEvBtn"><svg><use href="#i-plus"/></svg>New</button>
+      <button class="btn btn-pink btn-small admin-only" id="newEvBtn"><svg><use href="#i-plus"/></svg>New</button>
     </div>
     <div id="evList"></div>
     <div class="msg" id="evMsg"></div>
@@ -289,14 +290,14 @@
         <div class="mini"><b id="eGirls">0</b><span>Girls</span></div>
         <div class="mini owe"><b id="eWait">0</b><span>Waiting list</span></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:8px;align-items:center">
+      <div class="admin-only" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:8px;align-items:center">
         <input id="lBoys" type="number" inputmode="numeric" min="0" placeholder="Boys">
         <input id="lGirls" type="number" inputmode="numeric" min="0" placeholder="Girls">
         <input id="lTotal" type="number" inputmode="numeric" min="0" placeholder="Total">
         <button class="btn btn-small" id="limBtn" type="button">Save</button>
       </div>
-      <div class="msg" id="limMsg" style="margin-top:4px">Spot limits. Blank = no limit. Boys/girls full: new sign-ups go to the Waiting List. Total full: the link closes for everyone.</div>
-      <div id="fullBox" class="hidden" style="margin-top:8px;padding:12px;border-radius:14px;background:rgba(255,90,106,.12);border:1px solid var(--red,#ff5a6a)">
+      <div class="msg admin-only" id="limMsg" style="margin-top:4px">Spot limits. Blank = no limit. Boys/girls full: new sign-ups go to the Waiting List. Total full: the link closes for everyone.</div>
+      <div id="fullBox" class="hidden admin-only" style="margin-top:8px;padding:12px;border-radius:14px;background:rgba(255,90,106,.12);border:1px solid var(--red,#ff5a6a)">
         <b style="color:var(--red,#ff5a6a)">Full: the sign-up link is closed.</b>
         <div class="msg" style="margin:4px 0 8px">The total limit is reached. Reopen it to let more people sign up (this removes the total limit).</div>
         <button class="btn btn-pink btn-small" id="reopenBtn" type="button">Reopen sign-ups</button>
@@ -304,9 +305,9 @@
     </div>
     <div class="stack" style="margin:14px 0">
       <button class="btn btn-pink" id="scanBtn"><svg><use href="#i-scan"/></svg>Scan tickets</button>
-      <button class="btn btn-ghost" id="shareBtn"><svg><use href="#i-share"/></svg>Share sign-up link</button>
+      <button class="btn btn-ghost admin-only" id="shareBtn"><svg><use href="#i-share"/></svg>Share sign-up link</button>
     </div>
-    <div class="panel" style="margin-bottom:18px">
+    <div class="panel admin-only" style="margin-bottom:18px">
       <div class="eyebrow" style="margin-bottom:10px">Status</div>
       <div class="seg" id="seg">
         <button data-s="Planned">Planned</button><button data-s="Open">Open</button><button data-s="Closed">Closed</button><button data-s="Done">Done</button>
@@ -323,7 +324,7 @@
       <button class="chip" data-f="unpaid">Not paid</button>
     </div>
     <div class="guests" id="gList"></div>
-    <div class="danger">
+    <div class="danger admin-only">
       <button class="btn btn-ghost del-btn" id="delBtn" type="button">Delete event from the app</button>
       <div class="del-confirm hidden" id="delConfirm">
         <p><b>Delete this event from the app?</b> It disappears from your events list. Its tab in the Google Sheet and every guest, payment and scan stay saved.</p>
@@ -466,7 +467,7 @@
     cfg = { url: BASE, key: key };
     api('ping').then(function (r) {
       if (!r.ok) { $('setMsg').textContent = 'That key is not right. Check it and try again.'; return; }
-      store.set('ev_key', key); store.set('ev_me', r.name || ''); cfg.me = r.name || '';
+      store.set('ev_key', key); store.set('ev_me', r.name || ''); cfg.me = r.name || ''; setRole(r.role);
       $('setMsg').textContent = 'Unlocked as ' + cfg.me; sayHello();
       history = []; go('vEvents', false);
     }).catch(function () { $('setMsg').textContent = 'No connection. Check your internet and try again.'; });
@@ -892,6 +893,13 @@
   $('manual').onkeydown = function (e) { if (e.key === 'Enter') $('manualBtn').onclick(); };
 
   /* ---------- boot ---------- */
+  // Scanner-only codes (Alix, Vincent): open an event and scan. Everything else is hidden (and refused by the server).
+  function setRole(role) {
+    role = role === 'scanner' ? 'scanner' : 'admin';
+    store.set('ev_role', role);
+    document.body.classList.toggle('scanner-only', role === 'scanner');
+  }
+  setRole(store.get('ev_role'));
   function sayHello() {
     var hour = new Date().getHours();
     $('hello').textContent = cfg.me ? 'Hey ' + cfg.me : 'Your events';
@@ -911,7 +919,7 @@
       go2();
     });
   }
-  if (!cfg.key) go('vSettings', false); else { go('vEvents', false); if (!cfg.me) api('ping').then(function (r) { if (r.ok) { cfg.me = r.name; store.set('ev_me', r.name); sayHello(); } }).catch(function () {}); }
+  if (!cfg.key) go('vSettings', false); else { go('vEvents', false); api('ping').then(function (r) { if (r.ok) { cfg.me = r.name; store.set('ev_me', r.name); setRole(r.role); sayHello(); } }).catch(function () {}); }
 })();
 </script>
 </body>
