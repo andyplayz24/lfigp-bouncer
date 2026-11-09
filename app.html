@@ -257,6 +257,12 @@
       <div class="field"><label for="nDate">Date</label><input id="nDate" type="date"></div>
       <div class="field"><label for="nLoc">Location (optional)</label><input id="nLoc" placeholder="School gym"></div>
       <div class="field"><label for="nPrice">Ticket price (optional)</label><input id="nPrice" placeholder="50 AED"></div>
+      <div class="field"><label>Spots (leave blank for no limit)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="nBoys" type="number" inputmode="numeric" min="0" placeholder="Boys, e.g. 50">
+          <input id="nGirls" type="number" inputmode="numeric" min="0" placeholder="Girls, e.g. 50">
+        </div>
+        <input id="nTotal" type="number" inputmode="numeric" min="0" placeholder="Total spots, e.g. 500 (link closes when full)" style="margin-top:8px"></div>
       <div class="field"><label for="nStatus">Sign-ups</label>
         <select id="nStatus"><option value="Open">Open now</option><option value="Planned">Not yet (planned)</option></select></div>
       <button class="btn btn-pink" id="createBtn">Create event</button>
@@ -277,6 +283,23 @@
         <div class="mini"><b id="eUp">0</b><span>Signed up</span></div>
         <div class="mini ok"><b id="ePaid">0</b><span>Paid</span></div>
         <div class="mini owe"><b id="eOwe">0</b><span>Not paid</span></div>
+      </div>
+      <div class="chips3" style="margin-top:8px">
+        <div class="mini"><b id="eBoys">0</b><span>Boys</span></div>
+        <div class="mini"><b id="eGirls">0</b><span>Girls</span></div>
+        <div class="mini owe"><b id="eWait">0</b><span>Waiting list</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:8px;align-items:center">
+        <input id="lBoys" type="number" inputmode="numeric" min="0" placeholder="Boys">
+        <input id="lGirls" type="number" inputmode="numeric" min="0" placeholder="Girls">
+        <input id="lTotal" type="number" inputmode="numeric" min="0" placeholder="Total">
+        <button class="btn btn-small" id="limBtn" type="button">Save</button>
+      </div>
+      <div class="msg" id="limMsg" style="margin-top:4px">Spot limits. Blank = no limit. Boys/girls full: new sign-ups go to the Waiting List. Total full: the link closes for everyone.</div>
+      <div id="fullBox" class="hidden" style="margin-top:8px;padding:12px;border-radius:14px;background:rgba(255,90,106,.12);border:1px solid var(--red,#ff5a6a)">
+        <b style="color:var(--red,#ff5a6a)">Full: the sign-up link is closed.</b>
+        <div class="msg" style="margin:4px 0 8px">The total limit is reached. Reopen it to let more people sign up (this removes the total limit).</div>
+        <button class="btn btn-pink btn-small" id="reopenBtn" type="button">Reopen sign-ups</button>
       </div>
     </div>
     <div class="stack" style="margin:14px 0">
@@ -506,12 +529,12 @@
     go('vEvent');
   }
 
-  $('newEvBtn').onclick = function () { ['nName', 'nDate', 'nLoc', 'nPrice'].forEach(function (i) { $(i).value = ''; }); go('vNew'); setTimeout(function () { $('nName').focus(); }, 50); };
+  $('newEvBtn').onclick = function () { ['nName', 'nDate', 'nLoc', 'nPrice', 'nBoys', 'nGirls', 'nTotal'].forEach(function (i) { $(i).value = ''; }); go('vNew'); setTimeout(function () { $('nName').focus(); }, 50); };
   $('createBtn').onclick = function () {
     var name = $('nName').value.trim();
     if (!name) { $('newMsg').textContent = 'Give the event a name first.'; return; }
     $('createBtn').disabled = true; $('newMsg').textContent = 'Creating…';
-    api('createEvent', { name: name, date: $('nDate').value, location: $('nLoc').value.trim(), price: $('nPrice').value.trim(), status: $('nStatus').value })
+    api('createEvent', { name: name, date: $('nDate').value, location: $('nLoc').value.trim(), price: $('nPrice').value.trim(), status: $('nStatus').value, boysLimit: $('nBoys').value.trim(), girlsLimit: $('nGirls').value.trim(), totalLimit: $('nTotal').value.trim() })
       .then(function (r) {
         $('createBtn').disabled = false;
         if (!r.ok) { $('newMsg').textContent = r.error; return; }
@@ -531,6 +554,13 @@
     $('eBar').style.width = pct(s.checkedIn, s.signedUp) + '%';
     $('eUp').textContent = s.signedUp; $('ePaid').textContent = s.paid; $('eOwe').textContent = Math.max(0, s.signedUp - s.paid);
     $('sIn').textContent = s.checkedIn; $('sUp').textContent = s.signedUp;
+    var lim = function (n, l) { return (n || 0) + (l === '' || l === undefined || l === null ? '' : ' / ' + l); };
+    $('eBoys').textContent = lim(s.boys, cur && cur.boysLimit); $('eGirls').textContent = lim(s.girls, cur && cur.girlsLimit);
+    $('eWait').textContent = s.waiting || 0;
+    var tl = cur && cur.totalLimit;
+    $('eUp').textContent = s.signedUp + (tl === '' || tl === undefined || tl === null ? '' : ' / ' + tl);
+    var full = !(tl === '' || tl === undefined || tl === null) && s.signedUp >= Number(tl);
+    $('fullBox').classList.toggle('hidden', !full);
   }
   function renderEventHeader() {
     $('eName').textContent = cur.name;
@@ -539,8 +569,29 @@
     $('eSub').textContent = [cur.date, cur.location, cur.price].filter(Boolean).join(' · ');
     Array.prototype.forEach.call($('seg').children, function (b) { b.classList.toggle('on', b.getAttribute('data-s') === cur.status); });
     $('segHint').textContent = HINTS[cur.status] || '';
+    $('lBoys').value = cur.boysLimit === undefined ? '' : cur.boysLimit; $('lGirls').value = cur.girlsLimit === undefined ? '' : cur.girlsLimit; $('lTotal').value = cur.totalLimit === undefined ? '' : cur.totalLimit;
     setStats(cur.stats || { signedUp: 0, checkedIn: 0, paid: 0 });
   }
+  $('reopenBtn').onclick = function () {
+    if (!cur) return;
+    $('reopenBtn').disabled = true;
+    api('updateEvent', { event: cur.id, totalLimit: '', status: 'Open' }).then(function (r) {
+      $('reopenBtn').disabled = false;
+      if (!r.ok) return;
+      cur.totalLimit = ''; cur.status = 'Open'; $('lTotal').value = ''; renderEventHeader();
+      $('limMsg').textContent = 'Sign-ups reopened. The total limit is removed (set a new one any time).';
+    }).catch(function () { $('reopenBtn').disabled = false; $('limMsg').textContent = 'No connection. Try again.'; });
+  };
+  $('limBtn').onclick = function () {
+    if (!cur) return;
+    var b = $('lBoys').value.trim(), g = $('lGirls').value.trim(), t = $('lTotal').value.trim();
+    $('limMsg').textContent = 'Saving…';
+    api('updateEvent', { event: cur.id, boysLimit: b, girlsLimit: g, totalLimit: t }).then(function (r) {
+      if (!r.ok) { $('limMsg').textContent = r.error || 'Could not save.'; return; }
+      cur.boysLimit = r.event.boysLimit; cur.girlsLimit = r.event.girlsLimit; cur.totalLimit = r.event.totalLimit; setStats(cur.stats);
+      $('limMsg').textContent = 'Saved. Boys: ' + (b || 'no limit') + ' · Girls: ' + (g || 'no limit') + ' · Total: ' + (t || 'no limit') + '.';
+    }).catch(function () { $('limMsg').textContent = 'No connection. Try again.'; });
+  };
   function loadGuests() {
     if (!cur) return;
     var id = cur.id;

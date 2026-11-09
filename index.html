@@ -72,7 +72,7 @@
 
     <div class="view" id="vClosed">
       <div><div class="tag">LFIGP</div><h1 class="evName"></h1>
-      <p class="sub">Tickets aren't available right now. Check back later.</p></div>
+      <p class="sub" id="closedMsg">Tickets aren't available right now. Check back later.</p></div>
     </div>
 
     <div class="view" id="vForm">
@@ -93,6 +93,13 @@
         <div class="field">
           <label for="phone">WhatsApp number</label>
           <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="050 123 4567" required maxlength="20">
+        </div>
+        <div class="field">
+          <label for="gender">I am a</label>
+          <select id="gender" required>
+            <option value="" disabled selected>Boy or girl?</option>
+            <option value="Boy">Boy</option><option value="Girl">Girl</option>
+          </select>
         </div>
         <div class="field">
           <label for="grade">Grade</label>
@@ -124,6 +131,19 @@
       </div>
       <button id="saveBtn" type="button">Save to Photos / Send to WhatsApp</button>
       <p class="hint" id="mailHint">Show this QR code at the door. It works once, so don't share it.</p>
+    </div>
+
+    <div class="view" id="vWait">
+      <div>
+        <div class="tag" style="color:var(--sun,#ffc24b)">LFIGP · WAITING LIST</div>
+        <h1>You're on the waiting list</h1>
+        <p class="sub" id="waitWhy">All the spots for this event are taken right now, so you've been added to the waiting list. You don't have a ticket yet.</p>
+      </div>
+      <div class="card">
+        <p class="sub" style="color:var(--text)">Text <b>Andrea</b> for more info. If a spot opens up, your ticket will be emailed to you.</p>
+        <div class="tid" style="text-align:center;font-size:20px;color:var(--text);user-select:all">050 276 2056</div>
+        <a class="wa" href="https://wa.me/971502762056" rel="noopener">Text Andrea on WhatsApp</a>
+      </div>
     </div>
 
     <div class="view" id="vBlocked">
@@ -275,6 +295,7 @@
       fill('evName', ev.name);
       fill('evMeta', ev.date || 'Sign up to get your QR ticket.');
       document.querySelector('#vTicket .evMeta').textContent = ev.date || '';
+      if (ev.full) $('closedMsg').textContent = ev.fullMsg || 'Sorry, this event is full, so sign-ups are closed.';
       show(ev.open ? 'vForm' : 'vClosed');
     }).catch(function () {
       $('invalidMsg').textContent = 'No internet connection. Connect and reload this page.';
@@ -286,13 +307,14 @@
   $('saveBtn').onclick = saveTicket;
   $('f').addEventListener('submit', function (e) {
     e.preventDefault();
-    var name = $('name').value.trim(), email = $('email').value.trim(), grade = $('grade').value, phone = $('phone').value.trim();
+    var name = $('name').value.trim(), email = $('email').value.trim(), grade = $('grade').value, phone = $('phone').value.trim(), gender = $('gender').value;
     var err = $('err');
     err.textContent = '';
+    if (!gender) { err.textContent = 'Pick boy or girl.'; return; }
     if (!grade) { err.textContent = 'Pick your grade.'; return; }
     if (grade !== '11' && grade !== '12') {
       showBlocked({ name: name, email: email, grade: grade, phone: phone });
-      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).catch(function () {});
+      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, gender: gender, device: DEVICE }).catch(function () {});
       return;
     }
     if (name.split(/\s+/).length < 2) { err.textContent = 'Please enter your full name (first and last).'; return; }
@@ -305,13 +327,18 @@
     if (!(/^(?:00971|971|0)?5[024568]\d{7}$/.test(pd) || (/^(\+|00)/.test(phone) && pd.replace(/^00/, '').length >= 10 && pd.replace(/^00/, '').length <= 15 && !/^(\d)\1+$/.test(pd)))) {
       // A fake-looking WhatsApp number is treated like a wrong grade: this device is blocked.
       showBlocked({ name: name, email: email, grade: grade, phone: phone, why: 'phone' });
-      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).catch(function () {});
+      call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, gender: gender, device: DEVICE }).catch(function () {});
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Please enter a valid email address.'; return; }
     var btn = $('btn');
     btn.disabled = true; btn.textContent = 'Getting your ticket…';
-    call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, device: DEVICE }).then(function (res) {
+    call({ action: 'signup', event: EVENT_ID, name: name, grade: grade, email: email, phone: phone, gender: gender, device: DEVICE }).then(function (res) {
+      if (res && res.full) { $('closedMsg').textContent = res.error; show('vClosed'); return; }
+      if (res && res.waitlist) {
+        $('waitWhy').textContent = 'All the ' + (res.gender === 'Girl' ? "girls'" : "boys'") + ' spots for this event are taken right now, so you\'ve been added to the waiting list. You don\'t have a ticket yet.';
+        show('vWait'); return;
+      }
       if (res && (res.blocked || res.kicked)) { showBlocked({ name: name, email: email, grade: res.grade || grade, phone: phone, why: res.why || '', matched: res.matched || '' }); return; }
       if (!res || !res.ok) {
         err.textContent = (res && res.error) || 'Something went wrong. Try again.';
