@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join the Group · LFIGP</title>
+<meta name="theme-color" content="#120e2b">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* LFIGP ticket page: same night-out palette as the Bouncer app; the result is a ticket with a tear-off stub. */
+  :root {
+    --ink:#120e2b; --ink2:#1c1642; --ink3:#271f57; --line:#382f75;
+    --text:#f7f2ff; --muted:#a99fd6; --faint:#6f66a3;
+    --pink:#ff4f8b; --pink2:#ff7aa8; --sun:#ffc24b; --red:#ff5a6a; --paper:#fff8ef;
+    --display:"Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+    --body:"Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; color:var(--text); font-family:var(--body); font-size:15px;
+         background:radial-gradient(120% 60% at 100% 0%, rgba(138,43,226,.32), transparent 60%),
+                    radial-gradient(90% 50% at 0% 100%, rgba(255,79,139,.16), transparent 60%), var(--ink);
+         display:flex; align-items:center; justify-content:center; padding:24px 16px; }
+  .wrap { width:100%; max-width:400px; display:flex; flex-direction:column; gap:18px; }
+  .view { display:none; flex-direction:column; gap:18px; }
+  .view.on { display:flex; }
+  .tag { font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:3px; color:var(--pink2); }
+  h1 { font-family:var(--display); font-weight:800; font-size:36px; line-height:1.05; letter-spacing:-.8px; margin:6px 0 8px; text-wrap:balance; overflow-wrap:anywhere; }
+  .sub { color:var(--muted); margin:0; line-height:1.5; }
+  .card { background:var(--ink2); border:1px solid var(--line); border-radius:24px; padding:20px; display:flex; flex-direction:column; gap:14px; }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  label { font-size:13px; font-weight:600; color:var(--muted); }
+  input, select { width:100%; padding:15px; font-size:16px; font-family:var(--body); border-radius:14px; border:1px solid var(--line); background:var(--ink); color:var(--text); }
+  input::placeholder { color:var(--faint); }
+  input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline:2px solid var(--pink2); outline-offset:2px; }
+  button { width:100%; padding:16px; font-size:16px; font-weight:700; font-family:var(--body); border:0; border-radius:16px; background:var(--pink); color:#1a0a17; cursor:pointer; box-shadow:0 10px 26px -10px rgba(255,79,139,.8); }
+  button:disabled { opacity:.6; }
+  .err { color:var(--red); font-size:14px; min-height:18px; }
+  .wa { display:block; text-align:center; text-decoration:none; padding:16px; border-radius:16px; font-weight:700; background:#25d366; color:#06240f; }
+  .fine { font-size:12px; color:var(--faint); text-align:center; }
+  .loading { text-align:center; color:var(--muted); }
+
+  /* the ticket */
+  .tix { background:var(--paper); color:#120e2b; border-radius:24px; overflow:hidden; position:relative; }
+  .tix .top { padding:20px 20px 16px; }
+  .tix .ev { font-family:var(--display); font-weight:800; font-size:22px; line-height:1.1; overflow-wrap:anywhere; }
+  .tix .meta { font-size:13px; opacity:.65; margin-top:4px; }
+  .tix .holder { display:flex; justify-content:space-between; gap:12px; margin-top:16px; font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:.6; }
+  .tix .holder-v { display:flex; justify-content:space-between; gap:12px; font-weight:700; font-size:17px; }
+  .tix .holder-v span:first-child { overflow-wrap:anywhere; }
+  .tix .tear { position:relative; border-top:2px dashed rgba(18,14,43,.25); margin:0 18px; }
+  .tix .tear::before, .tix .tear::after { content:""; position:absolute; top:-13px; width:24px; height:24px; border-radius:50%; background:var(--ink); }
+  .tix .tear::before { left:-31px; } .tix .tear::after { right:-31px; }
+  .tix .stub { padding:18px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  #qr img, #qr canvas { display:block; width:220px; height:220px; max-width:100%; }
+  .tid { font-family:var(--mono); font-weight:700; font-size:16px; letter-spacing:3px; }
+  .hint { color:var(--muted); font-size:14px; line-height:1.5; text-align:center; margin:0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="view on" id="vAsk">
+      <div>
+        <div class="tag">LFIGP · WHATSAPP GROUP</div>
+        <h1>Join the group</h1>
+        <p class="sub">This is your personal invite. Type the WhatsApp number you signed up with to open the group.</p>
+      </div>
+      <div class="card">
+        <div class="field">
+          <label for="phone">WhatsApp number</label>
+          <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="050 123 4567" maxlength="20">
+        </div>
+        <button id="btn" type="button">Open the WhatsApp group</button>
+        <p class="err" id="err" role="alert"></p>
+      </div>
+    </div>
+
+    <div class="view" id="vOk">
+      <div>
+        <div class="tag">LFIGP · VERIFIED</div>
+        <h1 id="okTitle">You're in, see you there</h1>
+        <p class="sub">Tap below to open the WhatsApp group and ask to join. The admins approve everyone on the list.</p>
+      </div>
+      <a class="wa" id="go" href="#" rel="noopener">Open WhatsApp group</a>
+    </div>
+
+    <div class="view" id="vNo">
+      <div>
+        <div class="tag" style="color:var(--red)">LFIGP · NO ACCESS</div>
+        <h1>Sorry, you can't join</h1>
+        <p class="sub" id="noWhy"></p>
+      </div>
+      <div class="card">
+        <p class="sub" style="color:var(--text)">If you think this is a mistake, text <b>Andrea</b> on WhatsApp:</p>
+        <div class="tid" style="text-align:center;font-size:20px;color:var(--text);user-select:all">050 276 2056</div>
+        <a class="wa" href="https://wa.me/971502762056" rel="noopener">Text Andrea on WhatsApp</a>
+      </div>
+    </div>
+  </div>
+<script>
+(function () {
+  var API = 'https://script.google.com/macros/s/AKfycbyPPVz5aTOPchqY-gLZQHAKvSbPzOoAP-PtlQ0CxBHIl9lAvvSKUf9ifcSeobZWCeXcYw/exec';
+  var $ = function (id) { return document.getElementById(id); };
+  function show(id) { Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) { v.classList.toggle('on', v.id === id); }); }
+  function cget(k) { var m = document.cookie.match(new RegExp('(?:^|; )' + k + '=([^;]*)')); return m ? decodeURIComponent(m[1]) : ''; }
+  function sget(k) { var v = ''; try { v = localStorage.getItem(k) || ''; } catch (e) {} return v || cget(k); }
+  function sset(k, v) { try { localStorage.setItem(k, v); } catch (e) {} try { document.cookie = k + '=' + encodeURIComponent(v) + '; max-age=31536000; path=/; SameSite=Lax; Secure'; } catch (e) {} }
+  var DEVICE = sget('lfigp_dev');
+  if (!DEVICE) { DEVICE = 'D' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); sset('lfigp_dev', DEVICE); }
+  var T = new URLSearchParams(location.search).get('t') || '';
+  if (!/^[A-Z0-9]+\.[A-Z0-9]{6,}$/i.test(T)) { $('noWhy').textContent = "This link isn't valid. Only people on the list get a personal link, by email."; show('vNo'); return; }
+  function no(msg) { $('noWhy').textContent = msg; show('vNo'); }
+  $('btn').onclick = function () {
+    var phone = $('phone').value.trim(), err = $('err');
+    err.textContent = '';
+    if (phone.replace(/\D/g, '').length < 8) { err.textContent = 'Type the WhatsApp number you signed up with.'; return; }
+    $('btn').disabled = true; $('btn').textContent = 'Checking…';
+    fetch(API, { method: 'POST', body: JSON.stringify({ action: 'joinGroup', t: T, phone: phone, device: DEVICE }),
+                 headers: { 'Content-Type': 'text/plain;charset=utf-8' }, credentials: 'omit', redirect: 'follow' })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        $('btn').disabled = false; $('btn').textContent = 'Open the WhatsApp group';
+        if (r && r.ok && /^https:\/\/chat\.whatsapp\.com\//.test(r.link)) {
+          $('okTitle').textContent = 'You\'re verified, ' + String(r.name || '').split(' ')[0] + '!';
+          $('go').href = r.link; show('vOk');
+          setTimeout(function () { location.href = r.link; }, 900);
+          return;
+        }
+        if (r && /match/i.test(r.error || '')) { err.textContent = r.error; return; }
+        no((r && r.error) || 'Something went wrong. Try again.');
+      })
+      .catch(function () { $('btn').disabled = false; $('btn').textContent = 'Open the WhatsApp group'; err.textContent = 'No connection. Try again.'; });
+  };
+  $('phone').onkeydown = function (e) { if (e.key === 'Enter') $('btn').onclick(); };
+})();
+</script>
+</body>
+</html>

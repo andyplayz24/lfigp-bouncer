@@ -314,6 +314,24 @@
       </div>
       <div class="seg-hint" id="segHint"></div>
     </div>
+    <div class="panel admin-only" id="grpPanel" style="margin-bottom:18px">
+      <div class="eyebrow" style="margin-bottom:6px">WhatsApp group</div>
+      <div id="grpNudge" class="hidden" style="margin-bottom:10px;padding:10px 12px;border-radius:12px;background:rgba(37,211,102,.14);border:1px solid #25d366;font-weight:700">Sign-ups are closed. Now make the group and send everyone their link.</div>
+      <ol style="margin:0 0 10px 18px;padding:0;line-height:1.55;font-size:14px;color:var(--muted)">
+        <li>In WhatsApp, create the group with <b>only Alexandre and William</b>, then make them admins.</li>
+        <li>Group info → <b>Group settings</b>: turn ON <b>Approve new members</b>, and set <b>Add other members</b> to <b>Only admins</b>.</li>
+        <li>Group info → <b>Invite to group via link</b> → <b>Copy link</b>.</li>
+        <li><b>Paste it below</b> and tap Save. Students never see it directly.</li>
+        <li>Tap <b>Send group link to everyone</b>. Each person on the list gets their own one-time link by email.</li>
+        <li>Approve the join requests in WhatsApp. Anyone you don't recognise from the list: reject.</li>
+      </ol>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
+        <input id="gLink" type="url" inputmode="url" placeholder="Paste here: https://chat.whatsapp.com/…">
+        <button class="btn btn-small" id="gSave" type="button">Save</button>
+      </div>
+      <button class="btn btn-pink" id="gSend" type="button" style="margin-top:10px;background:#25d366;color:#06240f">Send group link to everyone</button>
+      <div class="msg" id="gMsg" style="margin-top:6px"></div>
+    </div>
     <div class="row-between" style="margin-bottom:10px"><div class="eyebrow">Guest list</div><span class="muted" id="gCount" style="font-size:13px"></span></div>
     <input id="search" placeholder="Search names or ticket IDs" style="margin-bottom:10px">
     <div class="filters" id="filters" style="margin-bottom:12px">
@@ -572,7 +590,39 @@
     $('segHint').textContent = HINTS[cur.status] || '';
     $('lBoys').value = cur.boysLimit === undefined ? '' : cur.boysLimit; $('lGirls').value = cur.girlsLimit === undefined ? '' : cur.girlsLimit; $('lTotal').value = cur.totalLimit === undefined ? '' : cur.totalLimit;
     setStats(cur.stats || { signedUp: 0, checkedIn: 0, paid: 0 });
+    $('gLink').value = cur.groupLink || '';
+    $('grpNudge').classList.toggle('hidden', !(cur.status === 'Closed' || cur.status === 'Done'));
+    groupStatus();
   }
+  function groupStatus() {
+    if (!cur || !guests) return;
+    var ok = guests.filter(function (g) { return !g.removed && !g.suspicious; });
+    var sent = ok.filter(function (g) { return g.groupSent; }).length, opened = ok.filter(function (g) { return g.groupOpened; }).length;
+    if (!cur.groupLink) $('gMsg').textContent = 'No group link saved yet.';
+    else $('gMsg').textContent = 'Links sent: ' + sent + ' of ' + ok.length + ' · Opened: ' + opened + '. Kicked, banned and suspicious people never get a link.';
+  }
+  $('gSave').onclick = function () {
+    if (!cur) return;
+    var v = $('gLink').value.trim();
+    $('gMsg').textContent = 'Saving…';
+    api('updateEvent', { event: cur.id, groupLink: v }).then(function (r) {
+      if (!r.ok) { $('gMsg').textContent = r.error || 'Could not save.'; return; }
+      cur.groupLink = r.event.groupLink; $('gMsg').textContent = v ? 'Group link saved. Now tap Send group link to everyone.' : 'Group link removed.';
+    }).catch(function () { $('gMsg').textContent = 'No connection. Try again.'; });
+  };
+  $('gSend').onclick = function () {
+    if (!cur) return;
+    if (!cur.groupLink) { $('gMsg').textContent = 'Paste the WhatsApp group link and tap Save first.'; return; }
+    $('gSend').disabled = true; $('gMsg').textContent = 'Sending emails… this can take a minute.';
+    api('sendGroupLinks', { event: cur.id }).then(function (r) {
+      $('gSend').disabled = false;
+      if (!r.ok) { $('gMsg').textContent = r.error || 'Could not send.'; return; }
+      var t = 'Sent ' + r.sent + ' new link' + (r.sent === 1 ? '' : 's') + '. Already had one: ' + r.already + '.';
+      if (r.left) t += ' ' + r.left + ' still waiting: Gmail only allows about 100 emails a day, so tap this button again tomorrow to send the rest.';
+      if (r.failed) t += ' ' + r.failed + ' failed (bad email?).';
+      $('gMsg').textContent = t; loadGuests();
+    }).catch(function () { $('gSend').disabled = false; $('gMsg').textContent = 'Still sending or no connection. Wait a minute, then reopen the event to check.'; });
+  };
   $('reopenBtn').onclick = function () {
     if (!cur) return;
     $('reopenBtn').disabled = true;
